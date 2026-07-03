@@ -58,6 +58,29 @@ Auth.js (email magic-link sign-in), next-intl (Dutch/English). See
 
    Open [http://localhost:3000](http://localhost:3000).
 
+## Trying it out locally
+
+Sign-in emails need a real [Resend](https://resend.com) account and a
+verified sending domain, which is overkill just to click around. So outside
+production, sign-in doesn't send an email at all - it prints the sign-in
+link to the terminal running `npm run dev` instead:
+
+```
+[dev] Sign-in link for organiser@example.com:
+http://localhost:3000/api/auth/callback/resend?...
+```
+
+Copy that URL into your browser to sign in. To have someone to sign in as,
+seed one test member per role:
+
+```bash
+npm run db:seed
+```
+
+This creates `organiser@example.com`, `trainer@example.com` and
+`player@example.com` (safe to re-run). Enter one of those on `/sign-in`,
+then grab its link from the terminal.
+
 ## Scripts
 
 | Command | What it does |
