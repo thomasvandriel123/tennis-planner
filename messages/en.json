@@ -1,0 +1,32 @@
+{
+  "app": {
+    "name": "Tennis Planner",
+    "tagline": "Plan trainings, without the hassle."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "trainingPeriods": "Training periods",
+    "members": "Members",
+    "payments": "Payments",
+    "signIn": "Sign in",
+    "signOut": "Sign out"
+  },
+  "home": {
+    "heading": "Welcome to the tennis planner",
+    "body": "Plan training periods, submit your preferences, and stay up to date — all in one place.",
+    "cta": "Sign in"
+  },
+  "signIn": {
+    "heading": "Sign in",
+    "emailLabel": "Email address",
+    "submit": "Send sign-in link",
+    "helpText": "You'll get an email with a link to sign in. No password needed."
+  },
+  "dashboard": {
+    "heading": "Dashboard",
+    "upcomingSessionsTitle": "Upcoming trainings",
+    "upcomingSessionsEmpty": "No trainings scheduled yet.",
+    "paymentStatusTitle": "Payment status",
+    "paymentStatusEmpty": "No outstanding payments."
+  }
+}

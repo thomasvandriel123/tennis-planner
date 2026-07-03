@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tennis
+      POSTGRES_PASSWORD: tennis
+      POSTGRES_DB: tennis_planner
+    ports:
+      - "5432:5432"
+    volumes:
+      - tennis_planner_db:/var/lib/postgresql/data
+
+volumes:
+  tennis_planner_db:

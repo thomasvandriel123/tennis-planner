@@ -1,0 +1,372 @@
+// Prisma schema for the Tennis Club Training Planner.
+//
+// This file is the single source of truth for the data model described in
+// SPECS.md §5. Every model and field has a `///` doc comment: those comments
+// are rendered into docs/data-dictionary.md by `npm run dictionary`, so this
+// schema doubles as the project's semantic layer. Keep comments accurate
+// rather than adding documentation elsewhere.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+/// A day of the week, used for recurring schedules and preferences.
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+/// A role a member can hold in the club. A single User can hold more than
+/// one (e.g. someone who both plays and trains).
+enum Role {
+  ORGANISER
+  TRAINER
+  PLAYER
+}
+
+/// UI language preference. Dutch is the club's default.
+enum Locale {
+  NL
+  EN
+}
+
+/// Lifecycle of a Training Period, from being drafted by the organiser to
+/// fully wrapped up.
+enum PeriodStatus {
+  /// Being configured by the organiser; not visible to players yet.
+  DRAFT
+  /// Visible to players; preferences can be submitted until the deadline.
+  OPEN
+  /// Preference deadline has passed; organiser is assigning players to slots.
+  ASSIGNING
+  /// Assignments are published; players see their slot and can pay.
+  PUBLISHED
+  /// The period has ended and is kept for historical reference only.
+  ARCHIVED
+}
+
+/// Status of one concrete TrainingSession (a single calendar date).
+enum TrainingSessionStatus {
+  SCHEDULED
+  CANCELLED
+  /// Moved to a different date/time/court; details in the linked Update.
+  MOVED
+}
+
+/// Status of a Payment owed by a player for a Training Period.
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+/// Delivery channel for a Notification.
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+// ---------------------------------------------------------------------------
+// Authentication (Auth.js / @auth/prisma-adapter)
+//
+// Account, Session and VerificationToken follow the exact shape required by
+// the Prisma adapter - do not rename fields or models here. "Session" in
+// this block means an authentication session (a signed-in browser), which is
+// a different concept from "TrainingSession" (a tennis training occurrence)
+// further down in this file.
+// ---------------------------------------------------------------------------
+
+/// A linked OAuth/email provider identity for a User. Currently unused
+/// (email magic-link auth doesn't need it) but required by the Prisma
+/// adapter's schema contract.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+/// An authenticated browser session (created after a magic-link sign-in).
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A one-time magic-link token sent to an email address.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Core domain
+// ---------------------------------------------------------------------------
+
+/// A club member. Holds one or more Roles (see UserRole) and, if they play,
+/// a self-reported skill level.
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  /// Optional contact number, shown to trainers/organiser only.
+  phone         String?
+  /// UI language; Dutch by default.
+  locale        Locale    @default(NL)
+  /// Self-reported playing level, 1 (beginner) to 9 (advanced). Set when the
+  /// player first submits a Preference; the organiser can correct it.
+  skillLevel    Int?
+  createdAt     DateTime  @default(now())
+
+  accounts Account[]
+  sessions Session[]
+
+  roles                   UserRole[]
+  preferences             Preference[]
+  /// Preferences from other players that named this user as a preferred
+  /// training partner.
+  preferredByPreferences  Preference[]          @relation("PreferencePartners")
+  assignments             Assignment[]
+  payments                Payment[]
+  updatesAuthored         Update[]
+  notifications           Notification[]
+  trainerAvailability     TrainerAvailability[]
+  trainingSessionsTrained TrainingSession[]     @relation("SessionTrainers")
+
+  @@index([email])
+}
+
+/// Grants one Role to one User, optionally scoped to a single Training
+/// Period (used for trainers who only help out for one season).
+model UserRole {
+  id       String  @id @default(cuid())
+  userId   String
+  role     Role
+  periodId String?
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period TrainingPeriod? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role, periodId])
+  @@index([userId])
+}
+
+/// A season definition: when it runs, on which weekdays, and at what price.
+/// TrainingSessions are generated from this pattern; see generateSessions()
+/// in src/lib/training-periods.ts.
+model TrainingPeriod {
+  id                 String       @id @default(cuid())
+  /// Short label shown to members, e.g. "Spring 2027".
+  name               String
+  startDate          DateTime
+  endDate            DateTime
+  /// Weekdays this period trains on, e.g. [MONDAY, TUESDAY].
+  weekdays           Weekday[]
+  startTime          String // "HH:mm", local club time
+  endTime            String // "HH:mm", local club time
+  /// Price a player owes for the whole period, in the smallest currency unit
+  /// (cents) to avoid floating-point rounding issues.
+  priceCents         Int
+  currency           String       @default("EUR")
+  /// Deadline for players to submit/edit Preferences for this period.
+  preferenceDeadline DateTime
+  status             PeriodStatus @default(DRAFT)
+  createdAt          DateTime     @default(now())
+
+  roles               UserRole[]
+  sessions            TrainingSession[]
+  preferences         Preference[]
+  payments            Payment[]
+  updates             Update[]              @relation("PeriodUpdates")
+  trainerAvailability TrainerAvailability[]
+
+  @@index([status])
+}
+
+/// One concrete calendar occurrence generated from a TrainingPeriod, e.g.
+/// "Monday 5 Jan 2027, 18:00-22:00". Can be individually cancelled or moved
+/// without affecting the rest of the period.
+model TrainingSession {
+  id        String                @id @default(cuid())
+  periodId  String
+  date      DateTime
+  startTime String // "HH:mm"
+  endTime   String // "HH:mm"
+  status    TrainingSessionStatus @default(SCHEDULED)
+
+  period   TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  trainers User[]         @relation("SessionTrainers")
+  slots    Slot[]
+  updates  Update[]
+
+  @@index([periodId, date])
+}
+
+/// A bookable sub-unit of a TrainingSession: a specific court, time range and
+/// capacity (e.g. "Court 1, 18:00-19:30, max 4"). Sessions usually have
+/// several Slots so players of different levels aren't all on one court.
+model Slot {
+  id                String @id @default(cuid())
+  trainingSessionId String
+  /// Court name/number, e.g. "Court 1".
+  court             String
+  startTime         String // "HH:mm"
+  endTime           String // "HH:mm"
+  capacity          Int
+  /// Optional skill band this slot is intended for.
+  minSkill          Int?
+  maxSkill          Int?
+
+  trainingSession TrainingSession @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+  assignments     Assignment[]
+
+  @@index([trainingSessionId])
+}
+
+/// A player's stated preference for a Training Period: which day(s) work,
+/// who they'd like to train with, and their skill level. Editable until the
+/// period's preferenceDeadline.
+model Preference {
+  id                String    @id @default(cuid())
+  userId            String
+  periodId          String
+  /// Weekdays the player is available for, drawn from the period's weekdays.
+  preferredWeekdays Weekday[]
+  /// Skill level at time of submission (1-9); copied onto User.skillLevel.
+  skillLevel        Int
+  notes             String?   @db.Text
+  submittedAt       DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period            TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  preferredPartners User[]         @relation("PreferencePartners")
+
+  @@unique([userId, periodId])
+  @@index([periodId])
+}
+
+/// Links a Player to a Slot. Created by the organiser during the assignment
+/// step (SPECS.md §4.3); never created automatically.
+model Assignment {
+  id           String   @id @default(cuid())
+  slotId       String
+  userId       String
+  assignedById String
+  assignedAt   DateTime @default(now())
+
+  slot Slot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, userId])
+  @@index([userId])
+}
+
+/// What a player owes (and has paid) for a Training Period. Created once
+/// per assigned player when the organiser publishes assignments.
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String
+  periodId          String
+  amountCents       Int
+  currency          String        @default("EUR")
+  status            PaymentStatus @default(PENDING)
+  /// Payment provider's reference for this transaction (e.g. Mollie payment
+  /// id), used to reconcile webhook callbacks. Null until checkout starts.
+  providerReference String?
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodId])
+  @@index([status])
+}
+
+/// A message posted by a trainer or organiser about either one
+/// TrainingSession (trainingSessionId set) or an entire TrainingPeriod
+/// (periodId set), e.g. "cancelled - rain". Generates Notifications for
+/// every affected player.
+model Update {
+  id                String   @id @default(cuid())
+  authorId          String
+  trainingSessionId String?
+  periodId          String?
+  body              String   @db.Text
+  createdAt         DateTime @default(now())
+
+  author          User             @relation(fields: [authorId], references: [id])
+  trainingSession TrainingSession? @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+  period          TrainingPeriod?  @relation("PeriodUpdates", fields: [periodId], references: [id], onDelete: Cascade)
+  notifications   Notification[]
+
+  @@index([trainingSessionId])
+  @@index([periodId])
+}
+
+/// One delivery of an Update to one User, over one channel. Read state is
+/// only tracked for the in-app channel.
+model Notification {
+  id       String              @id @default(cuid())
+  userId   String
+  updateId String
+  channel  NotificationChannel
+  sentAt   DateTime            @default(now())
+  readAt   DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  update Update @relation(fields: [updateId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+/// A trainer's stated availability for a Training Period, set independently
+/// of any specific session assignment.
+model TrainerAvailability {
+  id                String    @id @default(cuid())
+  userId            String
+  periodId          String
+  availableWeekdays Weekday[]
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodId])
+  @@index([periodId])
+}

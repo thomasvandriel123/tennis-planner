@@ -1,0 +1,32 @@
+{
+  "app": {
+    "name": "Tennisplanner",
+    "tagline": "Trainingen plannen, zonder gedoe."
+  },
+  "nav": {
+    "dashboard": "Overzicht",
+    "trainingPeriods": "Trainingsperiodes",
+    "members": "Leden",
+    "payments": "Betalingen",
+    "signIn": "Inloggen",
+    "signOut": "Uitloggen"
+  },
+  "home": {
+    "heading": "Welkom bij de tennisplanner",
+    "body": "Plan trainingsperiodes, geef je voorkeuren door en blijf op de hoogte — op één plek.",
+    "cta": "Inloggen"
+  },
+  "signIn": {
+    "heading": "Inloggen",
+    "emailLabel": "E-mailadres",
+    "submit": "Verstuur inloglink",
+    "helpText": "Je ontvangt een e-mail met een link om in te loggen. Geen wachtwoord nodig."
+  },
+  "dashboard": {
+    "heading": "Overzicht",
+    "upcomingSessionsTitle": "Eerstvolgende trainingen",
+    "upcomingSessionsEmpty": "Nog geen trainingen gepland.",
+    "paymentStatusTitle": "Betaalstatus",
+    "paymentStatusEmpty": "Geen openstaande betalingen."
+  }
+}
