@@ -12,6 +12,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Resend({
       apiKey: process.env.RESEND_API_KEY,
       from: process.env.EMAIL_FROM,
+      // Outside production, print the sign-in link to the server console
+      // instead of sending a real email - lets you sign in locally without
+      // a Resend account. See README "Trying it out locally".
+      ...(process.env.NODE_ENV !== "production" && {
+        sendVerificationRequest: async ({ identifier, url }) => {
+          console.log(`\n[dev] Sign-in link for ${identifier}:\n${url}\n`);
+        },
+      }),
     }),
   ],
   pages: {

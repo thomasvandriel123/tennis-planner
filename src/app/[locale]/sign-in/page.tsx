@@ -1,8 +1,16 @@
 import { getTranslations } from "next-intl/server";
 import { signIn } from "@/lib/auth";
+import { routing } from "@/i18n/routing";
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
   const t = await getTranslations("signIn");
+  // Land back on this locale's dashboard, not the (Dutch) default one.
+  const redirectTo = locale === routing.defaultLocale ? "/" : `/${locale}`;
 
   return (
     <div className="mx-auto flex max-w-sm flex-col gap-4 py-12">
@@ -11,7 +19,10 @@ export default async function SignInPage() {
       <form
         action={async (formData) => {
           "use server";
-          await signIn("resend", formData);
+          // signIn's 2nd argument is FormData *or* an options object, not
+          // both - merge redirectTo into a plain object instead of passing
+          // formData and options separately (the latter is silently ignored).
+          await signIn("resend", { email: formData.get("email"), redirectTo });
         }}
         className="flex flex-col gap-3"
       >
