@@ -191,19 +191,17 @@ model UserRole {
   @@index([userId])
 }
 
-/// A season definition: when it runs, on which weekdays, and at what price.
-/// TrainingSessions are generated from this pattern when the organiser
-/// creates the period (SPECS.md §4.1).
+/// A season definition: when it runs and at what price. The weekly schedule
+/// lives in the period's RecurringSlots (one per training block, e.g. "Monday
+/// 18:00-19:00, group of 4"). One TrainingSession is generated per calendar
+/// date that matches a slot's weekday, spanning that day's slots (SPECS.md
+/// §4.1, §14).
 model TrainingPeriod {
   id                 String       @id @default(cuid())
   /// Short label shown to members, e.g. "Spring 2027".
   name               String
   startDate          DateTime
   endDate            DateTime
-  /// Weekdays this period trains on, e.g. [MONDAY, TUESDAY].
-  weekdays           Weekday[]
-  startTime          String // "HH:mm", local club time
-  endTime            String // "HH:mm", local club time
   /// Price a player owes for the whole period, in the smallest currency unit
   /// (cents) to avoid floating-point rounding issues.
   priceCents         Int
@@ -214,6 +212,7 @@ model TrainingPeriod {
   createdAt          DateTime     @default(now())
 
   roles               UserRole[]
+  recurringSlots      RecurringSlot[]
   sessions            TrainingSession[]
   preferences         Preference[]
   payments            Payment[]
@@ -221,6 +220,28 @@ model TrainingPeriod {
   trainerAvailability TrainerAvailability[]
 
   @@index([status])
+}
+
+/// One block in a period's weekly schedule, e.g. "every Monday 18:00-19:00,
+/// group of 4, 'Groep 1'". A day can have several blocks back to back
+/// (18:00 group, 19:00 private lesson, 20:00 group). This is the recurring
+/// template members read to know their weekly training; the concrete per-date
+/// Slots used for assignment (SPECS.md §4.3) are a later step. Not to be
+/// confused with Slot (a bookable sub-unit of one dated TrainingSession).
+model RecurringSlot {
+  id        String  @id @default(cuid())
+  periodId  String
+  weekday   Weekday
+  startTime String // "HH:mm", local club time
+  endTime   String // "HH:mm", local club time
+  /// Group size for this block (1 for a private lesson).
+  capacity  Int
+  /// Optional name shown to members, e.g. "Group 1" or "Private".
+  label     String?
+
+  period TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@index([periodId])
 }
 
 /// One concrete calendar occurrence generated from a TrainingPeriod, e.g.

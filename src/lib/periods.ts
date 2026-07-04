@@ -1,9 +1,10 @@
 import type { PeriodStatus, Weekday } from "@/generated/prisma/enums";
 
 // Pure domain logic for the training-period planning workflow (SPECS.md §4.1,
-// §14): generating recurring session dates, parsing/validating the organiser's
-// period form and a player's preference form, and the period status
-// transitions. Kept free of Prisma/Next imports so it's unit-testable.
+// §14): the weekly recurring-slot schedule, generating the concrete session
+// dates from it, parsing/validating the organiser's period form and a player's
+// preference form, and the period status transitions. Kept free of
+// Prisma/Next imports so it's unit-testable.
 
 /** All weekdays in calendar order (Monday-first, as shown to members). */
 export const WEEKDAYS: readonly Weekday[] = [
@@ -31,6 +32,16 @@ export function isWeekday(value: string): value is Weekday {
   return (WEEKDAYS as readonly string[]).includes(value);
 }
 
+/** The Weekday a given (UTC) date falls on. */
+export function weekdayOf(date: Date): Weekday {
+  return JS_DAY_TO_WEEKDAY[date.getUTCDay()];
+}
+
+/** Sort weekdays into calendar order (Monday first). */
+export function sortWeekdays(weekdays: readonly Weekday[]): Weekday[] {
+  return WEEKDAYS.filter((d) => weekdays.includes(d));
+}
+
 /**
  * Every date between startDate and endDate (inclusive) that falls on one of
  * the given weekdays, in ascending order. Dates are UTC midnights, matching
@@ -49,7 +60,7 @@ export function generateSessionDates(
     t += 24 * 60 * 60 * 1000
   ) {
     const day = new Date(t);
-    if (wanted.has(JS_DAY_TO_WEEKDAY[day.getUTCDay()])) dates.push(day);
+    if (wanted.has(weekdayOf(day))) dates.push(day);
   }
   return dates;
 }
@@ -79,14 +90,82 @@ export function parseDateOnly(input: string): Date | null {
   return date.toISOString().startsWith(input) ? date : null;
 }
 
+// --- Recurring weekly schedule ---------------------------------------------
+
+/** Raw string values for one weekly training block (see the new-period form). */
+export interface RecurringSlotInput {
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  capacity: string;
+  label: string;
+}
+
+export interface ParsedRecurringSlot {
+  weekday: Weekday;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  label: string | null;
+}
+
+/** True for a slot row the organiser left completely blank (ignored on save). */
+function isBlankSlot(slot: RecurringSlotInput): boolean {
+  return (
+    !slot.weekday.trim() &&
+    !slot.startTime.trim() &&
+    !slot.endTime.trim() &&
+    !slot.capacity.trim() &&
+    !slot.label.trim()
+  );
+}
+
+/**
+ * The earliest start and latest end among the slots on each weekday. Used to
+ * span the generated TrainingSession over that day's blocks. "HH:mm" strings
+ * compare correctly as plain strings.
+ */
+export function sessionSpans(
+  slots: readonly ParsedRecurringSlot[],
+): Partial<Record<Weekday, { startTime: string; endTime: string }>> {
+  const spans: Partial<Record<Weekday, { startTime: string; endTime: string }>> = {};
+  for (const slot of slots) {
+    const current = spans[slot.weekday];
+    if (!current) {
+      spans[slot.weekday] = { startTime: slot.startTime, endTime: slot.endTime };
+    } else {
+      if (slot.startTime < current.startTime) current.startTime = slot.startTime;
+      if (slot.endTime > current.endTime) current.endTime = slot.endTime;
+    }
+  }
+  return spans;
+}
+
+/**
+ * The concrete TrainingSessions to generate: one per calendar date matching a
+ * slot's weekday, spanning that day's blocks. Ascending by date.
+ */
+export function buildGeneratedSessions(
+  startDate: Date,
+  endDate: Date,
+  slots: readonly ParsedRecurringSlot[],
+): { date: Date; startTime: string; endTime: string }[] {
+  const spans = sessionSpans(slots);
+  const weekdays = Object.keys(spans) as Weekday[];
+  return generateSessionDates(startDate, endDate, weekdays).map((date) => {
+    const span = spans[weekdayOf(date)]!;
+    return { date, startTime: span.startTime, endTime: span.endTime };
+  });
+}
+
+// --- Period form ------------------------------------------------------------
+
 /** Raw string values from the new-period form (see actions.ts). */
 export interface PeriodFormInput {
   name: string;
   startDate: string;
   endDate: string;
-  weekdays: string[];
-  startTime: string;
-  endTime: string;
+  slots: RecurringSlotInput[];
   preferenceDeadline: string;
   price: string;
   trainerIds: string[];
@@ -96,9 +175,9 @@ export interface ParsedPeriodForm {
   name: string;
   startDate: Date;
   endDate: Date;
+  slots: ParsedRecurringSlot[];
+  /** Distinct weekdays across the slots, in calendar order. */
   weekdays: Weekday[];
-  startTime: string;
-  endTime: string;
   preferenceDeadline: Date;
   priceCents: number;
   trainerIds: string[];
@@ -109,9 +188,11 @@ export type PeriodFormError =
   | "nameRequired"
   | "datesInvalid"
   | "datesOutOfOrder"
-  | "weekdaysRequired"
-  | "timesInvalid"
-  | "timesOutOfOrder"
+  | "slotsRequired"
+  | "slotWeekdayInvalid"
+  | "slotTimesInvalid"
+  | "slotTimesOutOfOrder"
+  | "slotCapacityInvalid"
   | "deadlineInvalid"
   | "deadlineAfterEnd"
   | "priceInvalid";
@@ -119,47 +200,59 @@ export type PeriodFormError =
 export function parsePeriodForm(
   input: PeriodFormInput,
 ): { data: ParsedPeriodForm; errors: [] } | { data: null; errors: PeriodFormError[] } {
-  const errors: PeriodFormError[] = [];
+  const errors = new Set<PeriodFormError>();
 
   const name = input.name.trim();
-  if (!name) errors.push("nameRequired");
+  if (!name) errors.add("nameRequired");
 
   const startDate = parseDateOnly(input.startDate);
   const endDate = parseDateOnly(input.endDate);
-  if (!startDate || !endDate) errors.push("datesInvalid");
-  else if (endDate < startDate) errors.push("datesOutOfOrder");
+  if (!startDate || !endDate) errors.add("datesInvalid");
+  else if (endDate < startDate) errors.add("datesOutOfOrder");
 
-  const weekdays = input.weekdays.filter(isWeekday);
-  if (weekdays.length === 0 || weekdays.length !== input.weekdays.length) {
-    errors.push("weekdaysRequired");
-  }
-
-  if (!TIME_RE.test(input.startTime) || !TIME_RE.test(input.endTime)) {
-    errors.push("timesInvalid");
-  } else if (input.endTime <= input.startTime) {
-    errors.push("timesOutOfOrder");
+  const rows = input.slots.filter((slot) => !isBlankSlot(slot));
+  const slots: ParsedRecurringSlot[] = [];
+  if (rows.length === 0) {
+    errors.add("slotsRequired");
+  } else {
+    for (const row of rows) {
+      if (!isWeekday(row.weekday)) errors.add("slotWeekdayInvalid");
+      const timesValid = TIME_RE.test(row.startTime) && TIME_RE.test(row.endTime);
+      if (!timesValid) errors.add("slotTimesInvalid");
+      else if (row.endTime <= row.startTime) errors.add("slotTimesOutOfOrder");
+      const capacity = Number(row.capacity);
+      if (!Number.isInteger(capacity) || capacity < 1) errors.add("slotCapacityInvalid");
+      if (isWeekday(row.weekday) && timesValid && row.endTime > row.startTime && capacity >= 1) {
+        slots.push({
+          weekday: row.weekday,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          capacity,
+          label: row.label.trim() ? row.label.trim().slice(0, 60) : null,
+        });
+      }
+    }
   }
 
   const preferenceDeadline = new Date(input.preferenceDeadline);
   if (!input.preferenceDeadline || Number.isNaN(preferenceDeadline.getTime())) {
-    errors.push("deadlineInvalid");
+    errors.add("deadlineInvalid");
   } else if (endDate && preferenceDeadline.getTime() >= endDate.getTime() + 24 * 60 * 60 * 1000) {
     // A deadline after the period has fully ended can never be acted on.
-    errors.push("deadlineAfterEnd");
+    errors.add("deadlineAfterEnd");
   }
 
   const priceCents = parseEurosToCents(input.price);
-  if (priceCents === null) errors.push("priceInvalid");
+  if (priceCents === null) errors.add("priceInvalid");
 
-  if (errors.length > 0) return { data: null, errors };
+  if (errors.size > 0) return { data: null, errors: [...errors] };
   return {
     data: {
       name,
       startDate: startDate!,
       endDate: endDate!,
-      weekdays: [...WEEKDAYS].filter((d) => weekdays.includes(d)),
-      startTime: input.startTime,
-      endTime: input.endTime,
+      slots,
+      weekdays: sortWeekdays([...new Set(slots.map((s) => s.weekday))]),
       preferenceDeadline,
       priceCents: priceCents!,
       trainerIds: [...new Set(input.trainerIds)],
@@ -167,6 +260,8 @@ export function parsePeriodForm(
     errors: [],
   };
 }
+
+// --- Preference form --------------------------------------------------------
 
 /** Raw string values from a player's preference form. */
 export interface PreferenceFormInput {
@@ -206,7 +301,7 @@ export function parsePreferenceForm(
   const notes = input.notes.trim();
   return {
     data: {
-      preferredWeekdays: [...WEEKDAYS].filter((d) => weekdays.includes(d)),
+      preferredWeekdays: sortWeekdays(weekdays),
       skillLevel,
       notes: notes ? notes.slice(0, 2000) : null,
     },
