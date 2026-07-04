@@ -165,6 +165,8 @@ model User {
   /// training partner.
   preferredByPreferences  Preference[]          @relation("PreferencePartners")
   assignments             Assignment[]
+  /// Assignments this user made as the organiser (see Assignment.assignedBy).
+  assignmentsMade         Assignment[]          @relation("AssignmentsMade")
   payments                Payment[]
   updatesAuthored         Update[]
   notifications           Notification[]
@@ -190,8 +192,8 @@ model UserRole {
 }
 
 /// A season definition: when it runs, on which weekdays, and at what price.
-/// TrainingSessions are generated from this pattern; see generateSessions()
-/// in src/lib/training-periods.ts.
+/// TrainingSessions are generated from this pattern (not yet implemented -
+/// see SPECS.md §4.1).
 model TrainingPeriod {
   id                 String       @id @default(cuid())
   /// Short label shown to members, e.g. "Spring 2027".
@@ -293,11 +295,14 @@ model Assignment {
   assignedById String
   assignedAt   DateTime @default(now())
 
-  slot Slot @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slot       Slot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The organiser who made this assignment.
+  assignedBy User @relation("AssignmentsMade", fields: [assignedById], references: [id])
 
   @@unique([slotId, userId])
   @@index([userId])
+  @@index([assignedById])
 }
 
 /// What a player owes (and has paid) for a Training Period. Created once

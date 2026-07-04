@@ -5,6 +5,14 @@ import { Link } from "@/i18n/navigation";
 import { TennisBallMark } from "./tennis-ball-mark";
 import { LocaleSwitcher } from "./locale-switcher";
 
+// Pages these link to don't exist yet (SPECS.md §6) - organiser sees a
+// dead link until they're built. Tracked as a known gap, not fixed here.
+const ORGANISER_LINKS = [
+  { href: "/periods", labelKey: "nav.trainingPeriods" },
+  { href: "/members", labelKey: "nav.members" },
+  { href: "/payments", labelKey: "nav.payments" },
+] as const;
+
 export async function SiteNav() {
   const [t, session] = await Promise.all([getTranslations(), auth()]);
 
@@ -25,19 +33,12 @@ export async function SiteNav() {
               <Link href="/" className="hover:text-court">
                 {t("nav.dashboard")}
               </Link>
-              {isOrganiser(session) && (
-                <>
-                  <Link href="/periods" className="hover:text-court">
-                    {t("nav.trainingPeriods")}
+              {isOrganiser(session) &&
+                ORGANISER_LINKS.map(({ href, labelKey }) => (
+                  <Link key={href} href={href} className="hover:text-court">
+                    {t(labelKey)}
                   </Link>
-                  <Link href="/members" className="hover:text-court">
-                    {t("nav.members")}
-                  </Link>
-                  <Link href="/payments" className="hover:text-court">
-                    {t("nav.payments")}
-                  </Link>
-                </>
-              )}
+                ))}
             </>
           )}
         </nav>

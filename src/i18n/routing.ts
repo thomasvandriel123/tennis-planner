@@ -13,5 +13,3 @@ export const routing = defineRouting({
   // that's respected on return visits) is how someone opts into English.
   localeDetection: false,
 });
-
-export type AppLocale = (typeof routing.locales)[number];

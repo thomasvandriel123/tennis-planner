@@ -69,6 +69,7 @@ A club member. Holds one or more Roles (see UserRole) and, if they play, a self-
 | preferences | `Preference[]` | — |
 | preferredByPreferences | `Preference[]` | Preferences from other players that named this user as a preferred training partner. |
 | assignments | `Assignment[]` | — |
+| assignmentsMade | `Assignment[]` | Assignments this user made as the organiser (see Assignment.assignedBy). |
 | payments | `Payment[]` | — |
 | updatesAuthored | `Update[]` | — |
 | notifications | `Notification[]` | — |
@@ -90,7 +91,7 @@ Grants one Role to one User, optionally scoped to a single Training Period (used
 
 ### TrainingPeriod
 
-A season definition: when it runs, on which weekdays, and at what price. TrainingSessions are generated from this pattern; see generateSessions() in src/lib/training-periods.ts.
+A season definition: when it runs, on which weekdays, and at what price. TrainingSessions are generated from this pattern (not yet implemented - see SPECS.md §4.1).
 
 | Field | Type | Description |
 |---|---|---|
@@ -178,6 +179,7 @@ Links a Player to a Slot. Created by the organiser during the assignment step (S
 | assignedAt | `DateTime` | — |
 | slot | `Slot` | — |
 | user | `User` | — |
+| assignedBy | `User` | The organiser who made this assignment. |
 
 ### Payment
 

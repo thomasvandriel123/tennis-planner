@@ -31,8 +31,11 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) notFound();
 
-  // Renders this layout (and everything under it) as static per locale
-  // instead of on every request. See https://next-intl.dev/docs/getting-started/app-router#static-rendering
+  // Required by next-intl whenever generateStaticParams() is used for a
+  // locale segment, so getTranslations()/useTranslations() resolve the
+  // right locale. Doesn't make the route static by itself - pages here
+  // read cookies via auth(), which keeps them dynamically rendered. See
+  // https://next-intl.dev/docs/getting-started/app-router#static-rendering
   setRequestLocale(locale);
 
   return (

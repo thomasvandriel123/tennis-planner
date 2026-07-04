@@ -12,12 +12,14 @@ import path from "node:path";
 const SCHEMA_PATH = path.join(process.cwd(), "prisma/schema.prisma");
 const OUTPUT_PATH = path.join(process.cwd(), "docs/data-dictionary.md");
 
+/** One field of a model, or one value of an enum, with its `///` doc comment (empty string if undocumented). */
 interface DocField {
   name: string;
   type: string;
   doc: string;
 }
 
+/** One `model` or `enum` block parsed out of schema.prisma, with its own doc comment and member fields/values. */
 interface DocBlock {
   kind: "model" | "enum";
   name: string;

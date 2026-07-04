@@ -1,4 +1,4 @@
-import { getTranslations } from "next-intl/server";
+import { getFormatter, getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Link } from "@/i18n/navigation";
@@ -22,7 +22,10 @@ export default async function HomePage() {
     );
   }
 
-  const t = await getTranslations("dashboard");
+  const [t, format] = await Promise.all([
+    getTranslations("dashboard"),
+    getFormatter(),
+  ]);
   const userId = session.user.id;
 
   const [upcomingAssignments, pendingPayments] = await Promise.all([
@@ -55,7 +58,7 @@ export default async function HomePage() {
           <ul className="divide-y divide-line rounded-lg border border-line">
             {upcomingAssignments.map((assignment) => (
               <li key={assignment.id} className="flex justify-between px-4 py-3">
-                <span>{assignment.slot.trainingSession.date.toLocaleDateString()}</span>
+                <span>{format.dateTime(assignment.slot.trainingSession.date, { dateStyle: "medium" })}</span>
                 <span className="text-foreground/60">
                   {assignment.slot.court} · {assignment.slot.startTime}-{assignment.slot.endTime}
                 </span>
@@ -77,7 +80,10 @@ export default async function HomePage() {
               <li key={payment.id} className="flex justify-between px-4 py-3">
                 <span>{payment.period.name}</span>
                 <span className="font-medium text-clay">
-                  {(payment.amountCents / 100).toFixed(2)} {payment.currency}
+                  {format.number(payment.amountCents / 100, {
+                    style: "currency",
+                    currency: payment.currency,
+                  })}
                 </span>
               </li>
             ))}
