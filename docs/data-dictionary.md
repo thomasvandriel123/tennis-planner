@@ -55,7 +55,7 @@ A club member. Holds one or more Roles (see UserRole) and, if they play, a self-
 | Field | Type | Description |
 |---|---|---|
 | id | `String` | — |
-| name | `String` | — |
+| name | `String?` | Unset for a member who has only ever signed in via magic link and never been given a name - Auth.js creates the User row from just the email address on first sign-in. |
 | email | `String` | — |
 | emailVerified | `DateTime?` | — |
 | image | `String?` | — |

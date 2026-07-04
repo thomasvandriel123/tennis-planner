@@ -57,7 +57,9 @@ training occurrence) — don't conflate them.
 it needs a `@prisma/adapter-pg` instance. `src/lib/db.ts` is the only place
 that should construct `PrismaClient`; import `db` from there everywhere
 else. It also does the `globalThis` caching trick so dev-mode module
-reloads don't open a new connection pool per edit.
+reloads don't open a new connection pool per edit. Note `prisma migrate
+dev` does not reliably regenerate the client on its own here - `db:migrate`
+chains `&& prisma generate` for that reason; don't drop it.
 
 **Auth and roles.** `src/lib/auth.ts` configures Auth.js v5 with email
 magic-link sign-in (no passwords) and attaches the signed-in user's `id`
