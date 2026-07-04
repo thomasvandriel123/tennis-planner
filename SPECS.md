@@ -290,7 +290,70 @@ In:
 - Native mobile apps (the web app must simply work well on mobile
   browsers).
 
-## 14. Open Questions
+## 14. Proposed feature: user/admin sign-in and admin-led training-period planning
+
+> In the current product vocabulary, the requested "admin" corresponds to the existing organiser role. The implementation should keep that role model and expose the admin workflow through the organiser/admin experience.
+
+### 14.1 Goal
+
+The app should support two distinct authentication paths:
+- a regular member login for players and trainers, and
+- an admin login for the club organiser/admin.
+
+The admin uses the app to create a training period, collect preferences, and later turn that draft into the final published plan.
+
+### 14.2 Functional requirements
+
+#### Authentication and access
+- The app must support a clear distinction between a regular user account and an admin account.
+- Admin-only screens and actions are protected server-side and cannot be reached by a regular user.
+- Admins can invite or create member accounts and assign role(s) as needed.
+
+#### Create a training period
+- The admin can create a new training period from a form.
+- The form must capture:
+  - a period name,
+  - the start date and end date,
+  - the recurring weekdays (for example Monday and Tuesday),
+  - the start and end time,
+  - the submission deadline for preferences,
+  - the period price and pricing model,
+  - the proposed trainer assignment(s) for each recurring session.
+- The app must generate one training session for each matching weekday within the selected date range.
+- The admin can enter a pricing model that supports a period-based amount and common group-size examples such as:
+  - €300 for a 4-person group, or
+  - €600 per person for a 2-person group.
+- The admin can assign one or more trainers to each proposed session or to the recurring pattern as a whole.
+- These trainer assignments are treated as proposed planning input during the preference-collection phase and are not yet considered the final published roster.
+
+#### Collect preferences
+- While the period is open, users can view the period and submit their preferences.
+- The system should present the proposed schedule and trainer plan to users so they can indicate their preferences in context.
+- The admin can review submissions and adjust the proposed trainer assignments before the deadline.
+
+#### Final planning after the deadline
+- After the preference deadline passes, the admin must be able to lock the period for final planning.
+- The admin can review all submitted preferences and then create the final published plan.
+- Final planning must include:
+  - the confirmed session schedule,
+  - the confirmed trainer assignments,
+  - the final price/participant breakdown used for the period.
+- Once the final plan is published, users can see their assigned sessions and the app can send notifications.
+
+### 14.3 Acceptance criteria
+- An admin can create a new training period from a single form without using spreadsheets or manual follow-up.
+- The app generates all recurring sessions from the entered date range and weekdays.
+- The admin can save a proposed trainer roster for the period before the preference deadline.
+- Regular users can submit preferences for an open period.
+- The admin can transition the period from preference collection to final planning after the deadline.
+- The final plan is clearly distinguishable from the initial proposed plan.
+
+### 14.4 Data model notes
+- The existing TrainingPeriod model should store recurrence, deadline, pricing, and status information.
+- The existing TrainingSession model should support both proposed and confirmed trainer assignments.
+- The existing Preference model remains the source of truth for players' stated preferences.
+
+## 15. Open Questions
 
 - Exact skill-level definition (1–9): is this club-defined (e.g. Dutch
   tennis "speelsterkte" classes) or a custom scale? Needs a short
