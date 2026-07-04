@@ -192,8 +192,8 @@ model UserRole {
 }
 
 /// A season definition: when it runs, on which weekdays, and at what price.
-/// TrainingSessions are generated from this pattern (not yet implemented -
-/// see SPECS.md §4.1).
+/// TrainingSessions are generated from this pattern when the organiser
+/// creates the period (SPECS.md §4.1).
 model TrainingPeriod {
   id                 String       @id @default(cuid())
   /// Short label shown to members, e.g. "Spring 2027".

@@ -91,7 +91,7 @@ Grants one Role to one User, optionally scoped to a single Training Period (used
 
 ### TrainingPeriod
 
-A season definition: when it runs, on which weekdays, and at what price. TrainingSessions are generated from this pattern (not yet implemented - see SPECS.md §4.1).
+A season definition: when it runs, on which weekdays, and at what price. TrainingSessions are generated from this pattern when the organiser creates the period (SPECS.md §4.1).
 
 | Field | Type | Description |
 |---|---|---|

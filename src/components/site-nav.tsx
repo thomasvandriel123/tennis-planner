@@ -8,7 +8,6 @@ import { LocaleSwitcher } from "./locale-switcher";
 // Pages these link to don't exist yet (SPECS.md §6) - organiser sees a
 // dead link until they're built. Tracked as a known gap, not fixed here.
 const ORGANISER_LINKS = [
-  { href: "/periods", labelKey: "nav.trainingPeriods" },
   { href: "/members", labelKey: "nav.members" },
   { href: "/payments", labelKey: "nav.payments" },
 ] as const;
@@ -32,6 +31,9 @@ export async function SiteNav() {
             <>
               <Link href="/" className="hover:text-court">
                 {t("nav.dashboard")}
+              </Link>
+              <Link href="/periods" className="hover:text-court">
+                {t("nav.trainingPeriods")}
               </Link>
               {isOrganiser(session) &&
                 ORGANISER_LINKS.map(({ href, labelKey }) => (
