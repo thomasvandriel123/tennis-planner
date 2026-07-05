@@ -242,8 +242,9 @@ model RecurringSlot {
   startTime String // "HH:mm", local club time
   /// End time, derived as startTime + the period's sessionDurationMinutes.
   endTime   String // "HH:mm", local club time
-  /// Group size for this block (1 for a private lesson).
-  capacity  Int
+  /// Group size for this block (1 for a private lesson). Optional: the
+  /// organiser may not know it yet when setting up the period.
+  capacity  Int?
   /// Optional name shown to members, e.g. "Group 1" or "Private".
   label     String?
   /// The proposed trainer for this block (one per block). Planning input, not

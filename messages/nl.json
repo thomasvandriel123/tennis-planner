@@ -33,6 +33,13 @@
     "title": "Trainingsperiodes",
     "empty": "Nog geen trainingsperiodes.",
     "newButton": "Nieuwe trainingsperiode",
+    "delete": {
+      "button": "Verwijderen",
+      "title": "Deze periode verwijderen?",
+      "body": "\"{name}\" en alles wat eraan gekoppeld is — alle gegenereerde trainingen, ingediende voorkeuren en betaalgegevens — wordt definitief verwijderd. Dit kan niet ongedaan worden gemaakt.",
+      "confirm": "Periode verwijderen",
+      "cancel": "Annuleren"
+    },
     "status": {
       "DRAFT": "Concept",
       "OPEN": "Open voor voorkeuren",
@@ -60,11 +67,12 @@
       "durationOption": "{minutes} min",
       "durationHelp": "Hoe lang één training duurt. De eindtijd van elk blok volgt uit de starttijd plus deze duur.",
       "slotsLabel": "Weekschema",
-      "slotsHelp": "Voeg elk trainingsblok toe: welke dag, de starttijd, de groepsgrootte en een trainer. Dagen kunnen op verschillende tijden lopen, en twee blokken mogen dezelfde tijd hebben (gelijktijdige trainingen op verschillende banen).",
+      "slotsHelp": "Voeg elk trainingsblok toe: kies de dag en starttijd. Groepsgrootte, trainer en label zijn optioneel en kun je later invullen. Dagen kunnen op verschillende tijden lopen, en twee blokken mogen dezelfde tijd hebben (gelijktijdige trainingen op verschillende banen).",
       "slotDay": "Dag",
       "slotStart": "Start",
       "slotEndHint": "→ {end}",
       "slotCapacity": "Groepsgrootte",
+      "slotCapacityPlaceholder": "Optioneel",
       "slotTrainer": "Trainer",
       "slotTrainerNone": "Nog geen trainer",
       "slotLabelField": "Label",

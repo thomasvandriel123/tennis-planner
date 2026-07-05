@@ -128,7 +128,8 @@ export interface ParsedRecurringSlot {
   weekday: Weekday;
   startTime: string;
   endTime: string;
-  capacity: number;
+  /** Group size; null when the organiser hasn't decided it yet. */
+  capacity: number | null;
   label: string | null;
   trainerId: string | null;
 }
@@ -262,14 +263,26 @@ export function parsePeriodForm(
       const endMinutes = startMinutes !== null && durationValid ? startMinutes + durationMinutes : null;
       // A training may not run past midnight.
       if (endMinutes !== null && endMinutes > 24 * 60) errors.add("slotEndsPastMidnight");
-      const capacity = Number(row.capacity);
-      if (!Number.isInteger(capacity) || capacity < 1) errors.add("slotCapacityInvalid");
+      // Group size is optional (not always known up front); if given it must
+      // be a positive whole number.
+      const capacityRaw = row.capacity.trim();
+      let capacity: number | null = null;
+      let capacityValid = true;
+      if (capacityRaw) {
+        const parsedCapacity = Number(capacityRaw);
+        if (!Number.isInteger(parsedCapacity) || parsedCapacity < 1) {
+          capacityValid = false;
+          errors.add("slotCapacityInvalid");
+        } else {
+          capacity = parsedCapacity;
+        }
+      }
       if (
         isWeekday(row.weekday) &&
         startMinutes !== null &&
         endMinutes !== null &&
         endMinutes <= 24 * 60 &&
-        capacity >= 1
+        capacityValid
       ) {
         slots.push({
           weekday: row.weekday,

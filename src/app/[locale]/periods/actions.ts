@@ -164,6 +164,17 @@ export async function publishPeriod(formData: FormData): Promise<void> {
   revalidatePeriodPages();
 }
 
+/**
+ * Permanently delete a period. Cascades to its generated sessions, recurring
+ * slots, submitted preferences, payments and updates (see the onDelete rules
+ * in schema.prisma). Organiser-only; irreversible.
+ */
+export async function deletePeriod(formData: FormData): Promise<void> {
+  const period = await requireOrganiserAndPeriod(formData);
+  await db.trainingPeriod.delete({ where: { id: period.id } });
+  revalidatePeriodPages();
+}
+
 export interface SubmitPreferenceState {
   errors: PreferenceFormError[];
   saved: boolean;

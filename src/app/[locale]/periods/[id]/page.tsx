@@ -145,9 +145,11 @@ export default async function PeriodDetailPage({
                               {slot.trainer.name ?? slot.trainer.email}
                             </span>
                           )}
-                          <span className="rounded-full bg-court/10 px-2 py-0.5 text-xs text-court dark:text-ball">
-                            {t("groupSize", { count: slot.capacity })}
-                          </span>
+                          {slot.capacity !== null && (
+                            <span className="rounded-full bg-court/10 px-2 py-0.5 text-xs text-court dark:text-ball">
+                              {t("groupSize", { count: slot.capacity })}
+                            </span>
+                          )}
                         </span>
                       </li>
                     ))}

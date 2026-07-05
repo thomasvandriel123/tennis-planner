@@ -4,16 +4,25 @@ import { isOrganiser } from "@/lib/rbac";
 import { Link } from "@/i18n/navigation";
 import { TennisBallMark } from "./tennis-ball-mark";
 import { LocaleSwitcher } from "./locale-switcher";
-
-// Pages these link to don't exist yet (SPECS.md §6) - organiser sees a
-// dead link until they're built. Tracked as a known gap, not fixed here.
-const ORGANISER_LINKS = [
-  { href: "/members", labelKey: "nav.members" },
-  { href: "/payments", labelKey: "nav.payments" },
-] as const;
+import { NavLinks } from "./nav-links";
 
 export async function SiteNav() {
   const [t, session] = await Promise.all([getTranslations(), auth()]);
+
+  // Members/payments pages don't exist yet (SPECS.md §6) - the organiser sees
+  // a dead link until they're built. Tracked as a known gap, not fixed here.
+  const links = session
+    ? [
+        { href: "/", label: t("nav.dashboard") },
+        { href: "/periods", label: t("nav.trainingPeriods") },
+        ...(isOrganiser(session)
+          ? [
+              { href: "/members", label: t("nav.members") },
+              { href: "/payments", label: t("nav.payments") },
+            ]
+          : []),
+      ]
+    : [];
 
   return (
     <header className="border-b border-line">
@@ -27,22 +36,7 @@ export async function SiteNav() {
         </Link>
 
         <nav className="hidden items-center gap-5 text-sm font-medium sm:flex">
-          {session && (
-            <>
-              <Link href="/" className="hover:text-court">
-                {t("nav.dashboard")}
-              </Link>
-              <Link href="/periods" className="hover:text-court">
-                {t("nav.trainingPeriods")}
-              </Link>
-              {isOrganiser(session) &&
-                ORGANISER_LINKS.map(({ href, labelKey }) => (
-                  <Link key={href} href={href} className="hover:text-court">
-                    {t(labelKey)}
-                  </Link>
-                ))}
-            </>
-          )}
+          <NavLinks links={links} />
         </nav>
 
         <div className="flex items-center gap-3">

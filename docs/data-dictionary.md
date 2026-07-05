@@ -125,7 +125,7 @@ One block in a period's weekly schedule, e.g. "every Monday 18:00-19:00, group o
 | weekday | `Weekday` | — |
 | startTime | `String` | — |
 | endTime | `String` | End time, derived as startTime + the period's sessionDurationMinutes. |
-| capacity | `Int` | Group size for this block (1 for a private lesson). |
+| capacity | `Int?` | Group size for this block (1 for a private lesson). Optional: the organiser may not know it yet when setting up the period. |
 | label | `String?` | Optional name shown to members, e.g. "Group 1" or "Private". |
 | trainerId | `String?` | The proposed trainer for this block (one per block). Planning input, not the final roster; null until the organiser assigns one. |
 | period | `TrainingPeriod` | — |
