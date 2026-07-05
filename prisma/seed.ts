@@ -11,6 +11,8 @@ const MEMBERS: { email: string; name: string; role: Role }[] = [
   { email: "organiser@example.com", name: "Olivia Organiser", role: "ORGANISER" },
   { email: "trainer@example.com", name: "Tom Trainer", role: "TRAINER" },
   { email: "player@example.com", name: "Priya Player", role: "PLAYER" },
+  // A second player so the "preferred training partners" picker has options.
+  { email: "player2@example.com", name: "Pieter Player", role: "PLAYER" },
 ];
 
 async function main() {

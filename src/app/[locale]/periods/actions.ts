@@ -14,6 +14,7 @@ import {
   isPreferenceWindowOpen,
   parsePeriodForm,
   parsePreferenceForm,
+  sortWeekdays,
   weekdayOf,
   type PeriodFormError,
   type RecurringSlotInput,
@@ -190,30 +191,56 @@ export async function submitPreference(
   const periodId = String(formData.get("periodId") ?? "");
   const period = await db.trainingPeriod.findUnique({
     where: { id: periodId },
-    include: { recurringSlots: { select: { weekday: true } } },
+    include: { recurringSlots: { select: { id: true, weekday: true } } },
   });
   if (!period || !isPreferenceWindowOpen(period, new Date())) {
     throw new Error("Preferences are closed for this period");
   }
-  const offeredWeekdays = [...new Set(period.recurringSlots.map((s) => s.weekday))];
 
-  const parsed = parsePreferenceForm(
-    {
-      weekdays: formData.getAll("weekdays").map(String),
-      skillLevel: String(formData.get("skillLevel") ?? ""),
-      notes: String(formData.get("notes") ?? ""),
-    },
-    offeredWeekdays,
-  );
+  const parsed = parsePreferenceForm({
+    slotIds: formData.getAll("slotIds").map(String),
+    skillLevel: String(formData.get("skillLevel") ?? ""),
+    notes: String(formData.get("notes") ?? ""),
+    partnerIds: formData.getAll("partnerIds").map(String),
+  });
   if (!parsed.data) return { errors: parsed.errors, saved: false };
-  const { preferredWeekdays, skillLevel, notes } = parsed.data;
-
+  const { slotIds, skillLevel, notes, partnerIds } = parsed.data;
   const userId = session.user.id;
+
+  // Only keep block ids that actually belong to this period; a forged POST
+  // can't sign the player up for another period's blocks.
+  const periodSlots = period.recurringSlots.filter((s) => slotIds.includes(s.id));
+  if (periodSlots.length === 0) return { errors: ["slotsRequired"], saved: false };
+  const preferredWeekdays = sortWeekdays([...new Set(periodSlots.map((s) => s.weekday))]);
+
+  // Only keep partner ids that are real players, and never the player itself.
+  const partnerRoles = await db.userRole.findMany({
+    where: { role: "PLAYER", userId: { in: partnerIds } },
+    select: { userId: true },
+  });
+  const validPartnerIds = [...new Set(partnerRoles.map((r) => r.userId))].filter((id) => id !== userId);
+
+  const slotConnect = periodSlots.map((s) => ({ id: s.id }));
+  const partnerConnect = validPartnerIds.map((id) => ({ id }));
   await db.$transaction([
     db.preference.upsert({
       where: { userId_periodId: { userId, periodId } },
-      create: { userId, periodId, preferredWeekdays, skillLevel, notes },
-      update: { preferredWeekdays, skillLevel, notes },
+      create: {
+        userId,
+        periodId,
+        preferredWeekdays,
+        skillLevel,
+        notes,
+        preferredSlots: { connect: slotConnect },
+        preferredPartners: { connect: partnerConnect },
+      },
+      update: {
+        preferredWeekdays,
+        skillLevel,
+        notes,
+        preferredSlots: { set: slotConnect },
+        preferredPartners: { set: partnerConnect },
+      },
     }),
     // The schema documents Preference.skillLevel as copied onto the User.
     db.user.update({ where: { id: userId }, data: { skillLevel } }),

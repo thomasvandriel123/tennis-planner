@@ -253,6 +253,8 @@ model RecurringSlot {
 
   period  TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
   trainer User?          @relation("RecurringSlotTrainer", fields: [trainerId], references: [id], onDelete: SetNull)
+  /// Players who signed up for this block (see Preference.preferredSlots).
+  preferences Preference[] @relation("PreferenceSlots")
 
   @@index([periodId])
   @@index([trainerId])
@@ -298,14 +300,15 @@ model Slot {
   @@index([trainingSessionId])
 }
 
-/// A player's stated preference for a Training Period: which day(s) work,
-/// who they'd like to train with, and their skill level. Editable until the
-/// period's preferenceDeadline.
+/// A player's enrolment for a Training Period: which recurring training
+/// blocks they want to join, who they'd like to train with, and their skill
+/// level. Editable until the period's preferenceDeadline.
 model Preference {
   id                String    @id @default(cuid())
   userId            String
   periodId          String
-  /// Weekdays the player is available for, drawn from the period's weekdays.
+  /// Weekdays the player is available for, derived from the chosen blocks.
+  /// Kept for a compact day-level view alongside preferredSlots.
   preferredWeekdays Weekday[]
   /// Skill level at time of submission (1-9); copied onto User.skillLevel.
   skillLevel        Int
@@ -313,9 +316,12 @@ model Preference {
   submittedAt       DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  period            TrainingPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  preferredPartners User[]         @relation("PreferencePartners")
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period            TrainingPeriod  @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  /// The recurring weekly blocks this player signed up for.
+  preferredSlots    RecurringSlot[] @relation("PreferenceSlots")
+  /// Fellow members the player would like to be grouped with.
+  preferredPartners User[]          @relation("PreferencePartners")
 
   @@unique([userId, periodId])
   @@index([periodId])

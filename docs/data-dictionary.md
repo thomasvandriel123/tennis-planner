@@ -130,6 +130,7 @@ One block in a period's weekly schedule, e.g. "every Monday 18:00-19:00, group o
 | trainerId | `String?` | The proposed trainer for this block (one per block). Planning input, not the final roster; null until the organiser assigns one. |
 | period | `TrainingPeriod` | — |
 | trainer | `User?` | — |
+| preferences | `Preference[]` | Players who signed up for this block (see Preference.preferredSlots). |
 
 ### TrainingSession
 
@@ -167,21 +168,22 @@ A bookable sub-unit of a TrainingSession: a specific court, time range and capac
 
 ### Preference
 
-A player's stated preference for a Training Period: which day(s) work, who they'd like to train with, and their skill level. Editable until the period's preferenceDeadline.
+A player's enrolment for a Training Period: which recurring training blocks they want to join, who they'd like to train with, and their skill level. Editable until the period's preferenceDeadline.
 
 | Field | Type | Description |
 |---|---|---|
 | id | `String` | — |
 | userId | `String` | — |
 | periodId | `String` | — |
-| preferredWeekdays | `Weekday[]` | Weekdays the player is available for, drawn from the period's weekdays. |
+| preferredWeekdays | `Weekday[]` | Weekdays the player is available for, derived from the chosen blocks. Kept for a compact day-level view alongside preferredSlots. |
 | skillLevel | `Int` | Skill level at time of submission (1-9); copied onto User.skillLevel. |
 | notes | `String?` | — |
 | submittedAt | `DateTime` | — |
 | updatedAt | `DateTime` | — |
 | user | `User` | — |
 | period | `TrainingPeriod` | — |
-| preferredPartners | `User[]` | — |
+| preferredSlots | `RecurringSlot[]` | The recurring weekly blocks this player signed up for. |
+| preferredPartners | `User[]` | Fellow members the player would like to be grouped with. |
 
 ### Assignment
 
