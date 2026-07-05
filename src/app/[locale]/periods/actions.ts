@@ -7,79 +7,114 @@ import { db } from "@/lib/db";
 import { isOrganiser, isPlayer } from "@/lib/rbac";
 import { redirect } from "@/i18n/navigation";
 import {
+  buildGeneratedSessions,
   canOpenForPreferences,
   canPublish,
   canStartFinalPlanning,
-  generateSessionDates,
   isPreferenceWindowOpen,
   parsePeriodForm,
   parsePreferenceForm,
+  weekdayOf,
   type PeriodFormError,
-  type PeriodFormInput,
+  type RecurringSlotInput,
   type PreferenceFormError,
-  type PreferenceFormInput,
 } from "@/lib/periods";
+import type { Weekday } from "@/generated/prisma/enums";
 
 // Server actions are reachable via direct POSTs, so every action re-checks
 // the caller's session and role here - the UI hiding a button is not access
 // control (see CLAUDE.md "Role checks belong server-side").
-
-// The form states echo the submitted raw values back (and count submissions)
-// because React resets a form's fields to their defaults after the action
-// completes: the forms remount keyed on `submission` with `values` as the
-// new defaults so nothing the user typed is lost.
+//
+// The forms are fully client-controlled, so nothing typed is lost when the
+// action returns; these states only carry validation errors (and a saved flag).
 
 export interface CreatePeriodState {
   errors: PeriodFormError[];
-  values: PeriodFormInput | null;
-  submission: number;
+}
+
+/** Read the parallel slot-row arrays the form posts into an ordered list. */
+function readSlotRows(formData: FormData): RecurringSlotInput[] {
+  const weekdays = formData.getAll("slotWeekday").map(String);
+  const startTimes = formData.getAll("slotStartTime").map(String);
+  const capacities = formData.getAll("slotCapacity").map(String);
+  const labels = formData.getAll("slotLabel").map(String);
+  const trainerIds = formData.getAll("slotTrainerId").map(String);
+  return weekdays.map((weekday, i) => ({
+    weekday,
+    startTime: startTimes[i] ?? "",
+    capacity: capacities[i] ?? "",
+    label: labels[i] ?? "",
+    trainerId: trainerIds[i] ?? "",
+  }));
 }
 
 export async function createPeriod(
-  prevState: CreatePeriodState,
+  _prevState: CreatePeriodState,
   formData: FormData,
 ): Promise<CreatePeriodState> {
   const session = await auth();
   if (!isOrganiser(session)) throw new Error("Unauthorized");
 
-  const input: PeriodFormInput = {
+  const parsed = parsePeriodForm({
     name: String(formData.get("name") ?? ""),
     startDate: String(formData.get("startDate") ?? ""),
     endDate: String(formData.get("endDate") ?? ""),
-    weekdays: formData.getAll("weekdays").map(String),
-    startTime: String(formData.get("startTime") ?? ""),
-    endTime: String(formData.get("endTime") ?? ""),
+    durationMinutes: String(formData.get("durationMinutes") ?? ""),
+    slots: readSlotRows(formData),
     preferenceDeadline: String(formData.get("preferenceDeadline") ?? ""),
     price: String(formData.get("price") ?? ""),
-    trainerIds: formData.getAll("trainerIds").map(String),
-  };
-  const parsed = parsePeriodForm(input);
-  if (!parsed.data) {
-    return { errors: parsed.errors, values: input, submission: prevState.submission + 1 };
-  }
-  const { trainerIds, ...data } = parsed.data;
+  });
+  if (!parsed.data) return { errors: parsed.errors };
+  // `weekdays` is derived (validation only); `durationMinutes` maps to the
+  // differently-named column. Neither can be spread straight into `data`.
+  const { slots, weekdays: _weekdays, durationMinutes, ...data } = parsed.data;
+  void _weekdays;
 
-  // Only accept ids of members who actually hold the trainer role; a forged
-  // POST could otherwise attach arbitrary users as proposed trainers.
+  // Only accept trainer ids of members who actually hold the trainer role; a
+  // forged POST could otherwise attach arbitrary users as proposed trainers.
+  const wantedTrainerIds = [...new Set(slots.map((s) => s.trainerId).filter((id): id is string => !!id))];
   const trainerRoles = await db.userRole.findMany({
-    where: { role: "TRAINER", userId: { in: trainerIds } },
+    where: { role: "TRAINER", userId: { in: wantedTrainerIds } },
     select: { userId: true },
   });
-  const validTrainerIds = [...new Set(trainerRoles.map((r) => r.userId))];
-  const trainerConnect = validTrainerIds.map((id) => ({ id }));
+  const validTrainerIds = new Set(trainerRoles.map((r) => r.userId));
+  const cleanSlots = slots.map((slot) => ({
+    ...slot,
+    trainerId: slot.trainerId && validTrainerIds.has(slot.trainerId) ? slot.trainerId : null,
+  }));
 
-  // The proposed trainer roster applies to the whole recurring pattern for
-  // now: every generated session gets the same trainers (SPECS.md §14.2
-  // allows pattern-level assignment; per-session tweaks are a later step).
+  // Generated sessions span each day's blocks; connect that day's block
+  // trainers to the session so the concrete roster is available later.
+  const trainersByWeekday = new Map<Weekday, Set<string>>();
+  for (const slot of cleanSlots) {
+    if (!slot.trainerId) continue;
+    const set = trainersByWeekday.get(slot.weekday) ?? new Set<string>();
+    set.add(slot.trainerId);
+    trainersByWeekday.set(slot.weekday, set);
+  }
+
   const period = await db.trainingPeriod.create({
     data: {
       ...data,
+      sessionDurationMinutes: durationMinutes,
+      recurringSlots: {
+        create: cleanSlots.map(({ weekday, startTime, endTime, capacity, label, trainerId }) => ({
+          weekday,
+          startTime,
+          endTime,
+          capacity,
+          label,
+          trainerId,
+        })),
+      },
       sessions: {
-        create: generateSessionDates(data.startDate, data.endDate, data.weekdays).map((date) => ({
-          date,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          trainers: { connect: trainerConnect },
+        create: buildGeneratedSessions(data.startDate, data.endDate, cleanSlots).map((s) => ({
+          date: s.date,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          trainers: {
+            connect: [...(trainersByWeekday.get(weekdayOf(s.date)) ?? [])].map((id) => ({ id })),
+          },
         })),
       },
     },
@@ -87,7 +122,7 @@ export async function createPeriod(
   });
 
   redirect({ href: `/periods/${period.id}`, locale: await getLocale() });
-  return { errors: [], values: null, submission: 0 }; // unreachable; redirect() throws
+  return { errors: [] }; // unreachable; redirect() throws
 }
 
 async function requireOrganiserAndPeriod(formData: FormData) {
@@ -132,31 +167,34 @@ export async function publishPeriod(formData: FormData): Promise<void> {
 export interface SubmitPreferenceState {
   errors: PreferenceFormError[];
   saved: boolean;
-  values: PreferenceFormInput | null;
-  submission: number;
 }
 
 export async function submitPreference(
-  prevState: SubmitPreferenceState,
+  _prevState: SubmitPreferenceState,
   formData: FormData,
 ): Promise<SubmitPreferenceState> {
   const session = await auth();
   if (!session || !isPlayer(session)) throw new Error("Unauthorized");
 
   const periodId = String(formData.get("periodId") ?? "");
-  const period = await db.trainingPeriod.findUnique({ where: { id: periodId } });
+  const period = await db.trainingPeriod.findUnique({
+    where: { id: periodId },
+    include: { recurringSlots: { select: { weekday: true } } },
+  });
   if (!period || !isPreferenceWindowOpen(period, new Date())) {
     throw new Error("Preferences are closed for this period");
   }
+  const offeredWeekdays = [...new Set(period.recurringSlots.map((s) => s.weekday))];
 
-  const input: PreferenceFormInput = {
-    weekdays: formData.getAll("weekdays").map(String),
-    skillLevel: String(formData.get("skillLevel") ?? ""),
-    notes: String(formData.get("notes") ?? ""),
-  };
-  const parsed = parsePreferenceForm(input, period.weekdays);
-  const submission = prevState.submission + 1;
-  if (!parsed.data) return { errors: parsed.errors, saved: false, values: input, submission };
+  const parsed = parsePreferenceForm(
+    {
+      weekdays: formData.getAll("weekdays").map(String),
+      skillLevel: String(formData.get("skillLevel") ?? ""),
+      notes: String(formData.get("notes") ?? ""),
+    },
+    offeredWeekdays,
+  );
+  if (!parsed.data) return { errors: parsed.errors, saved: false };
   const { preferredWeekdays, skillLevel, notes } = parsed.data;
 
   const userId = session.user.id;
@@ -171,5 +209,5 @@ export async function submitPreference(
   ]);
 
   revalidatePeriodPages();
-  return { errors: [], saved: true, values: input, submission };
+  return { errors: [], saved: true };
 }
