@@ -144,6 +144,11 @@ model User {
   /// never been given a name - Auth.js creates the User row from just the
   /// email address on first sign-in.
   name          String?
+  /// Structured name, set by the organiser when inviting a member. Used for
+  /// the members roster (sortable by last name). `name` remains the display
+  /// fallback for magic-link users who have neither.
+  firstName     String?
+  lastName      String?
   email         String    @unique
   emailVerified DateTime?
   image         String?
