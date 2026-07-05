@@ -25,8 +25,10 @@ export default async function PeriodDetailPage({
   const period = await db.trainingPeriod.findUnique({
     where: { id },
     include: {
-      recurringSlots: { orderBy: [{ weekday: "asc" }, { startTime: "asc" }] },
-      sessions: { take: 1, include: { trainers: { select: { id: true, name: true, email: true } } } },
+      recurringSlots: {
+        orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+        include: { trainer: { select: { id: true, name: true, email: true } } },
+      },
       _count: { select: { sessions: true } },
     },
   });
@@ -65,7 +67,6 @@ export default async function PeriodDetailPage({
   const offeredWeekdays = WEEKDAYS.filter((d) =>
     period.recurringSlots.some((s) => s.weekday === d),
   );
-  const trainers = period.sessions[0]?.trainers ?? [];
 
   const facts: [string, string][] = [
     [
@@ -75,6 +76,7 @@ export default async function PeriodDetailPage({
         timeZone: "UTC",
       }),
     ],
+    [t("factDuration"), t("durationValue", { minutes: period.sessionDurationMinutes })],
     [
       t("factPrice"),
       format.number(period.priceCents / 100, { style: "currency", currency: period.currency }),
@@ -84,9 +86,6 @@ export default async function PeriodDetailPage({
       format.dateTime(period.preferenceDeadline, { dateStyle: "medium", timeStyle: "short" }),
     ],
   ];
-  if (trainers.length > 0) {
-    facts.push([t("factTrainers"), trainers.map((tr) => tr.name ?? tr.email).join(", ")]);
-  }
 
   return (
     <div className="flex flex-col gap-8 py-4">
@@ -139,8 +138,13 @@ export default async function PeriodDetailPage({
                         <span className="font-medium tabular-nums">
                           {slot.startTime}–{slot.endTime}
                         </span>
-                        <span className="flex items-center gap-2 text-foreground/70">
+                        <span className="flex flex-wrap items-center gap-2 text-foreground/70">
                           {slot.label && <span>{slot.label}</span>}
+                          {slot.trainer && (
+                            <span className="text-foreground/60">
+                              {slot.trainer.name ?? slot.trainer.email}
+                            </span>
+                          )}
                           <span className="rounded-full bg-court/10 px-2 py-0.5 text-xs text-court dark:text-ball">
                             {t("groupSize", { count: slot.capacity })}
                           </span>

@@ -75,6 +75,7 @@ A club member. Holds one or more Roles (see UserRole) and, if they play, a self-
 | notifications | `Notification[]` | — |
 | trainerAvailability | `TrainerAvailability[]` | — |
 | trainingSessionsTrained | `TrainingSession[]` | — |
+| recurringSlotsTrained | `RecurringSlot[]` | Recurring weekly training blocks this user is the proposed trainer for. |
 
 ### UserRole
 
@@ -101,7 +102,8 @@ A season definition: when it runs and at what price. The weekly schedule lives i
 | endDate | `DateTime` | — |
 | priceCents | `Int` | Price a player owes for the whole period, in the smallest currency unit (cents) to avoid floating-point rounding issues. |
 | currency | `String` | — |
-| preferenceDeadline | `DateTime` | Deadline for players to submit/edit Preferences for this period. |
+| sessionDurationMinutes | `Int` | How long a single training lasts, in minutes. Each RecurringSlot's end time is its start time plus this. Defaults to 60 (one hour). |
+| preferenceDeadline | `DateTime` | Deadline for players to submit/edit Preferences for this period. Must fall before the first training in the period. |
 | status | `PeriodStatus` | — |
 | createdAt | `DateTime` | — |
 | roles | `UserRole[]` | — |
@@ -114,7 +116,7 @@ A season definition: when it runs and at what price. The weekly schedule lives i
 
 ### RecurringSlot
 
-One block in a period's weekly schedule, e.g. "every Monday 18:00-19:00, group of 4, 'Groep 1'". A day can have several blocks back to back (18:00 group, 19:00 private lesson, 20:00 group). This is the recurring template members read to know their weekly training; the concrete per-date Slots used for assignment (SPECS.md §4.3) are a later step. Not to be confused with Slot (a bookable sub-unit of one dated TrainingSession).
+One block in a period's weekly schedule, e.g. "every Monday 18:00-19:00, group of 4, 'Groep 1', with Tom". A day can have several blocks back to back (18:00 group, 19:00 private lesson, 20:00 group) and several blocks can run at the same time on different courts (each with its own trainer). This is the recurring template members read to know their weekly training; the concrete per-date Slots used for assignment (SPECS.md §4.3) are a later step. Not to be confused with Slot (a sub-unit of one dated TrainingSession).
 
 | Field | Type | Description |
 |---|---|---|
@@ -122,10 +124,12 @@ One block in a period's weekly schedule, e.g. "every Monday 18:00-19:00, group o
 | periodId | `String` | — |
 | weekday | `Weekday` | — |
 | startTime | `String` | — |
-| endTime | `String` | — |
+| endTime | `String` | End time, derived as startTime + the period's sessionDurationMinutes. |
 | capacity | `Int` | Group size for this block (1 for a private lesson). |
 | label | `String?` | Optional name shown to members, e.g. "Group 1" or "Private". |
+| trainerId | `String?` | The proposed trainer for this block (one per block). Planning input, not the final roster; null until the organiser assigns one. |
 | period | `TrainingPeriod` | — |
+| trainer | `User?` | — |
 
 ### TrainingSession
 

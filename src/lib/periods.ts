@@ -82,6 +82,24 @@ export function parseEurosToCents(input: string): number | null {
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Minutes since midnight for a "HH:mm" string, or null if malformed. */
+export function parseTimeToMinutes(input: string): number | null {
+  if (!TIME_RE.test(input)) return null;
+  const [h, m] = input.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Format minutes-since-midnight back to "HH:mm" (e.g. 1140 -> "19:00"). */
+export function minutesToTime(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Session lengths offered in the new-period form, in minutes. */
+export const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120] as const;
+export const DEFAULT_DURATION_MINUTES = 60;
+
 /** Parse a "YYYY-MM-DD" form value into a UTC-midnight Date, or null. */
 export function parseDateOnly(input: string): Date | null {
   if (!DATE_RE.test(input)) return null;
@@ -92,13 +110,18 @@ export function parseDateOnly(input: string): Date | null {
 
 // --- Recurring weekly schedule ---------------------------------------------
 
-/** Raw string values for one weekly training block (see the new-period form). */
+/**
+ * Raw string values for one weekly training block (see the new-period form).
+ * A block has only a start time; its end is derived from the period's session
+ * duration, so different days can run at different times just by picking
+ * different starts, and two blocks can share a start (parallel trainings).
+ */
 export interface RecurringSlotInput {
   weekday: string;
   startTime: string;
-  endTime: string;
   capacity: string;
   label: string;
+  trainerId: string;
 }
 
 export interface ParsedRecurringSlot {
@@ -107,6 +130,7 @@ export interface ParsedRecurringSlot {
   endTime: string;
   capacity: number;
   label: string | null;
+  trainerId: string | null;
 }
 
 /** True for a slot row the organiser left completely blank (ignored on save). */
@@ -114,9 +138,9 @@ function isBlankSlot(slot: RecurringSlotInput): boolean {
   return (
     !slot.weekday.trim() &&
     !slot.startTime.trim() &&
-    !slot.endTime.trim() &&
     !slot.capacity.trim() &&
-    !slot.label.trim()
+    !slot.label.trim() &&
+    !slot.trainerId.trim()
   );
 }
 
@@ -165,22 +189,22 @@ export interface PeriodFormInput {
   name: string;
   startDate: string;
   endDate: string;
+  durationMinutes: string;
   slots: RecurringSlotInput[];
   preferenceDeadline: string;
   price: string;
-  trainerIds: string[];
 }
 
 export interface ParsedPeriodForm {
   name: string;
   startDate: Date;
   endDate: Date;
+  durationMinutes: number;
   slots: ParsedRecurringSlot[];
   /** Distinct weekdays across the slots, in calendar order. */
   weekdays: Weekday[];
   preferenceDeadline: Date;
   priceCents: number;
-  trainerIds: string[];
 }
 
 /** Error identifiers double as i18n keys under `periods.new.errors`. */
@@ -188,14 +212,26 @@ export type PeriodFormError =
   | "nameRequired"
   | "datesInvalid"
   | "datesOutOfOrder"
+  | "durationInvalid"
   | "slotsRequired"
   | "slotWeekdayInvalid"
   | "slotTimesInvalid"
-  | "slotTimesOutOfOrder"
+  | "slotEndsPastMidnight"
   | "slotCapacityInvalid"
   | "deadlineInvalid"
-  | "deadlineAfterEnd"
+  | "deadlineAfterFirstTraining"
   | "priceInvalid";
+
+/**
+ * The naive local Date of a generated session's start (its date at its start
+ * time). Used to check the preference deadline falls before the first
+ * training. Session dates are UTC midnights; combining with the local "HH:mm"
+ * start keeps this consistent with `new Date(deadlineInput)`, which is also
+ * parsed in local time.
+ */
+function sessionStartDate(session: { date: Date; startTime: string }): Date {
+  return new Date(`${session.date.toISOString().slice(0, 10)}T${session.startTime}:00`);
+}
 
 export function parsePeriodForm(
   input: PeriodFormInput,
@@ -210,6 +246,10 @@ export function parsePeriodForm(
   if (!startDate || !endDate) errors.add("datesInvalid");
   else if (endDate < startDate) errors.add("datesOutOfOrder");
 
+  const durationMinutes = Number(input.durationMinutes);
+  const durationValid = Number.isInteger(durationMinutes) && durationMinutes > 0;
+  if (!durationValid) errors.add("durationInvalid");
+
   const rows = input.slots.filter((slot) => !isBlankSlot(slot));
   const slots: ParsedRecurringSlot[] = [];
   if (rows.length === 0) {
@@ -217,29 +257,42 @@ export function parsePeriodForm(
   } else {
     for (const row of rows) {
       if (!isWeekday(row.weekday)) errors.add("slotWeekdayInvalid");
-      const timesValid = TIME_RE.test(row.startTime) && TIME_RE.test(row.endTime);
-      if (!timesValid) errors.add("slotTimesInvalid");
-      else if (row.endTime <= row.startTime) errors.add("slotTimesOutOfOrder");
+      const startMinutes = parseTimeToMinutes(row.startTime);
+      if (startMinutes === null) errors.add("slotTimesInvalid");
+      const endMinutes = startMinutes !== null && durationValid ? startMinutes + durationMinutes : null;
+      // A training may not run past midnight.
+      if (endMinutes !== null && endMinutes > 24 * 60) errors.add("slotEndsPastMidnight");
       const capacity = Number(row.capacity);
       if (!Number.isInteger(capacity) || capacity < 1) errors.add("slotCapacityInvalid");
-      if (isWeekday(row.weekday) && timesValid && row.endTime > row.startTime && capacity >= 1) {
+      if (
+        isWeekday(row.weekday) &&
+        startMinutes !== null &&
+        endMinutes !== null &&
+        endMinutes <= 24 * 60 &&
+        capacity >= 1
+      ) {
         slots.push({
           weekday: row.weekday,
           startTime: row.startTime,
-          endTime: row.endTime,
+          endTime: minutesToTime(endMinutes),
           capacity,
           label: row.label.trim() ? row.label.trim().slice(0, 60) : null,
+          trainerId: row.trainerId.trim() || null,
         });
       }
     }
   }
 
   const preferenceDeadline = new Date(input.preferenceDeadline);
-  if (!input.preferenceDeadline || Number.isNaN(preferenceDeadline.getTime())) {
+  const deadlineValid = Boolean(input.preferenceDeadline) && !Number.isNaN(preferenceDeadline.getTime());
+  if (!deadlineValid) {
     errors.add("deadlineInvalid");
-  } else if (endDate && preferenceDeadline.getTime() >= endDate.getTime() + 24 * 60 * 60 * 1000) {
-    // A deadline after the period has fully ended can never be acted on.
-    errors.add("deadlineAfterEnd");
+  } else if (startDate && endDate && slots.length > 0) {
+    const firstSession = buildGeneratedSessions(startDate, endDate, slots)[0];
+    // The deadline must fall strictly before the first training.
+    if (firstSession && preferenceDeadline.getTime() >= sessionStartDate(firstSession).getTime()) {
+      errors.add("deadlineAfterFirstTraining");
+    }
   }
 
   const priceCents = parseEurosToCents(input.price);
@@ -251,11 +304,11 @@ export function parsePeriodForm(
       name,
       startDate: startDate!,
       endDate: endDate!,
+      durationMinutes,
       slots,
       weekdays: sortWeekdays([...new Set(slots.map((s) => s.weekday))]),
       preferenceDeadline,
       priceCents: priceCents!,
-      trainerIds: [...new Set(input.trainerIds)],
     },
     errors: [],
   };

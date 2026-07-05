@@ -14,10 +14,12 @@ import {
   isPreferenceWindowOpen,
   parsePeriodForm,
   parsePreferenceForm,
+  weekdayOf,
   type PeriodFormError,
   type RecurringSlotInput,
   type PreferenceFormError,
 } from "@/lib/periods";
+import type { Weekday } from "@/generated/prisma/enums";
 
 // Server actions are reachable via direct POSTs, so every action re-checks
 // the caller's session and role here - the UI hiding a button is not access
@@ -34,15 +36,15 @@ export interface CreatePeriodState {
 function readSlotRows(formData: FormData): RecurringSlotInput[] {
   const weekdays = formData.getAll("slotWeekday").map(String);
   const startTimes = formData.getAll("slotStartTime").map(String);
-  const endTimes = formData.getAll("slotEndTime").map(String);
   const capacities = formData.getAll("slotCapacity").map(String);
   const labels = formData.getAll("slotLabel").map(String);
+  const trainerIds = formData.getAll("slotTrainerId").map(String);
   return weekdays.map((weekday, i) => ({
     weekday,
     startTime: startTimes[i] ?? "",
-    endTime: endTimes[i] ?? "",
     capacity: capacities[i] ?? "",
     label: labels[i] ?? "",
+    trainerId: trainerIds[i] ?? "",
   }));
 }
 
@@ -57,45 +59,62 @@ export async function createPeriod(
     name: String(formData.get("name") ?? ""),
     startDate: String(formData.get("startDate") ?? ""),
     endDate: String(formData.get("endDate") ?? ""),
+    durationMinutes: String(formData.get("durationMinutes") ?? ""),
     slots: readSlotRows(formData),
     preferenceDeadline: String(formData.get("preferenceDeadline") ?? ""),
     price: String(formData.get("price") ?? ""),
-    trainerIds: formData.getAll("trainerIds").map(String),
   });
   if (!parsed.data) return { errors: parsed.errors };
-  // `weekdays` is derived (used for validation only); it isn't a column.
-  const { trainerIds, slots, weekdays: _weekdays, ...data } = parsed.data;
+  // `weekdays` is derived (validation only); `durationMinutes` maps to the
+  // differently-named column. Neither can be spread straight into `data`.
+  const { slots, weekdays: _weekdays, durationMinutes, ...data } = parsed.data;
   void _weekdays;
 
-  // Only accept ids of members who actually hold the trainer role; a forged
-  // POST could otherwise attach arbitrary users as proposed trainers.
+  // Only accept trainer ids of members who actually hold the trainer role; a
+  // forged POST could otherwise attach arbitrary users as proposed trainers.
+  const wantedTrainerIds = [...new Set(slots.map((s) => s.trainerId).filter((id): id is string => !!id))];
   const trainerRoles = await db.userRole.findMany({
-    where: { role: "TRAINER", userId: { in: trainerIds } },
+    where: { role: "TRAINER", userId: { in: wantedTrainerIds } },
     select: { userId: true },
   });
-  const trainerConnect = [...new Set(trainerRoles.map((r) => r.userId))].map((id) => ({ id }));
+  const validTrainerIds = new Set(trainerRoles.map((r) => r.userId));
+  const cleanSlots = slots.map((slot) => ({
+    ...slot,
+    trainerId: slot.trainerId && validTrainerIds.has(slot.trainerId) ? slot.trainerId : null,
+  }));
 
-  // The proposed trainer roster applies to the whole pattern for now: every
-  // generated session gets the same trainers (SPECS.md §14.2 allows
-  // pattern-level assignment; per-session tweaks are a later step).
+  // Generated sessions span each day's blocks; connect that day's block
+  // trainers to the session so the concrete roster is available later.
+  const trainersByWeekday = new Map<Weekday, Set<string>>();
+  for (const slot of cleanSlots) {
+    if (!slot.trainerId) continue;
+    const set = trainersByWeekday.get(slot.weekday) ?? new Set<string>();
+    set.add(slot.trainerId);
+    trainersByWeekday.set(slot.weekday, set);
+  }
+
   const period = await db.trainingPeriod.create({
     data: {
       ...data,
+      sessionDurationMinutes: durationMinutes,
       recurringSlots: {
-        create: slots.map(({ weekday, startTime, endTime, capacity, label }) => ({
+        create: cleanSlots.map(({ weekday, startTime, endTime, capacity, label, trainerId }) => ({
           weekday,
           startTime,
           endTime,
           capacity,
           label,
+          trainerId,
         })),
       },
       sessions: {
-        create: buildGeneratedSessions(data.startDate, data.endDate, slots).map((s) => ({
+        create: buildGeneratedSessions(data.startDate, data.endDate, cleanSlots).map((s) => ({
           date: s.date,
           startTime: s.startTime,
           endTime: s.endTime,
-          trainers: { connect: trainerConnect },
+          trainers: {
+            connect: [...(trainersByWeekday.get(weekdayOf(s.date)) ?? [])].map((id) => ({ id })),
+          },
         })),
       },
     },

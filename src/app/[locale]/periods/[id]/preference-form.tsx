@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { Weekday } from "@/generated/prisma/enums";
 import { submitPreference, type SubmitPreferenceState } from "../actions";
@@ -41,8 +41,17 @@ export function PreferenceForm({
 
   const hasPreference = existing !== null || state.saved;
 
+  // Dispatch the action ourselves rather than via `<form action>`: React 19
+  // resets the form after an action, which drops the controlled skill <select>.
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (preview) return;
+    const data = new FormData(event.currentTarget);
+    startTransition(() => formAction(data));
+  };
+
   return (
-    <form action={preview ? undefined : formAction} className="flex flex-col gap-4">
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="periodId" value={periodId} />
       <fieldset disabled={preview} className="flex flex-col gap-4">
         {state.errors.length > 0 && (

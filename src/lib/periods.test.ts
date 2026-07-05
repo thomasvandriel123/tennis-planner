@@ -69,10 +69,10 @@ describe("generateSessionDates", () => {
 
 describe("sessionSpans / buildGeneratedSessions", () => {
   const slots: ParsedRecurringSlot[] = [
-    { weekday: "MONDAY", startTime: "18:00", endTime: "19:00", capacity: 4, label: "Group 1" },
-    { weekday: "MONDAY", startTime: "19:00", endTime: "20:00", capacity: 1, label: "Private" },
-    { weekday: "MONDAY", startTime: "20:00", endTime: "21:00", capacity: 2, label: "Group 2" },
-    { weekday: "WEDNESDAY", startTime: "10:00", endTime: "11:00", capacity: 4, label: null },
+    { weekday: "MONDAY", startTime: "18:00", endTime: "19:00", capacity: 4, label: "Group 1", trainerId: null },
+    { weekday: "MONDAY", startTime: "19:00", endTime: "20:00", capacity: 1, label: "Private", trainerId: null },
+    { weekday: "MONDAY", startTime: "20:00", endTime: "21:00", capacity: 2, label: "Group 2", trainerId: null },
+    { weekday: "WEDNESDAY", startTime: "10:00", endTime: "11:00", capacity: 4, label: null, trainerId: null },
   ];
 
   it("spans each weekday from its earliest start to its latest end", () => {
@@ -130,9 +130,9 @@ describe("parseDateOnly", () => {
 const slot = (over: Partial<RecurringSlotInput> = {}): RecurringSlotInput => ({
   weekday: "MONDAY",
   startTime: "18:00",
-  endTime: "19:00",
   capacity: "4",
   label: "Group 1",
+  trainerId: "",
   ...over,
 });
 
@@ -140,39 +140,49 @@ const validPeriodInput: PeriodFormInput = {
   name: "Spring 2027",
   startDate: "2027-01-04",
   endDate: "2027-03-29",
+  durationMinutes: "60",
   slots: [
-    slot(),
-    slot({ startTime: "19:00", endTime: "20:00", capacity: "1", label: "Private" }),
-    slot({ weekday: "TUESDAY", startTime: "20:00", endTime: "21:00", capacity: "2", label: "" }),
+    slot({ trainerId: "trainer_1" }),
+    slot({ startTime: "19:00", capacity: "1", label: "Private", trainerId: "trainer_2" }),
+    slot({ weekday: "TUESDAY", startTime: "20:00", capacity: "2", label: "" }),
   ],
   preferenceDeadline: "2026-12-20T23:59",
   price: "300",
-  trainerIds: ["trainer_1", "trainer_1", "trainer_2"],
 };
 
 describe("parsePeriodForm", () => {
   it("accepts a complete valid form", () => {
     const result = parsePeriodForm(validPeriodInput);
     expect(result.errors).toEqual([]);
-    expect(result.data).toMatchObject({ name: "Spring 2027", priceCents: 30000 });
-    // Weekdays derived from the slots, in calendar order; trainers de-duped.
+    expect(result.data).toMatchObject({ name: "Spring 2027", priceCents: 30000, durationMinutes: 60 });
+    // Weekdays derived from the slots, in calendar order.
     expect(result.data?.weekdays).toEqual(["MONDAY", "TUESDAY"]);
-    expect(result.data?.trainerIds).toEqual(["trainer_1", "trainer_2"]);
     expect(result.data?.slots).toHaveLength(3);
-    // Empty label becomes null; capacity parsed to a number.
-    expect(result.data?.slots[2]).toEqual({
-      weekday: "TUESDAY",
-      startTime: "20:00",
-      endTime: "21:00",
-      capacity: 2,
-      label: null,
+    // End time derived from start + duration; empty label becomes null.
+    expect(result.data?.slots[0]).toEqual({
+      weekday: "MONDAY",
+      startTime: "18:00",
+      endTime: "19:00",
+      capacity: 4,
+      label: "Group 1",
+      trainerId: "trainer_1",
     });
+    expect(result.data?.slots[2]).toMatchObject({ label: null, trainerId: null });
+  });
+
+  it("derives end time from a non-hour duration", () => {
+    const result = parsePeriodForm({
+      ...validPeriodInput,
+      durationMinutes: "90",
+      slots: [slot({ startTime: "18:00" })],
+    });
+    expect(result.data?.slots[0].endTime).toBe("19:30");
   });
 
   it("ignores completely blank slot rows", () => {
     const result = parsePeriodForm({
       ...validPeriodInput,
-      slots: [slot(), { weekday: "", startTime: "", endTime: "", capacity: "", label: "" }],
+      slots: [slot(), { weekday: "", startTime: "", capacity: "", label: "", trainerId: "" }],
     });
     expect(result.errors).toEqual([]);
     expect(result.data?.slots).toHaveLength(1);
@@ -182,13 +192,27 @@ describe("parsePeriodForm", () => {
     [{ name: "  " }, "nameRequired"],
     [{ startDate: "not-a-date" }, "datesInvalid"],
     [{ endDate: "2026-12-01" }, "datesOutOfOrder"],
+    [{ durationMinutes: "0" }, "durationInvalid"],
+    [{ durationMinutes: "abc" }, "durationInvalid"],
     [{ preferenceDeadline: "" }, "deadlineInvalid"],
-    [{ preferenceDeadline: "2027-06-01T12:00" }, "deadlineAfterEnd"],
     [{ price: "gratis" }, "priceInvalid"],
   ] as const)("rejects %o with %s", (override, expectedError) => {
     const result = parsePeriodForm({ ...validPeriodInput, ...override });
     expect(result.data).toBeNull();
     expect(result.errors).toContain(expectedError);
+  });
+
+  it("rejects a deadline on or after the first training", () => {
+    // First training is Mon 2027-01-04 at 18:00.
+    const onFirst = parsePeriodForm({ ...validPeriodInput, preferenceDeadline: "2027-01-04T18:00" });
+    expect(onFirst.errors).toContain("deadlineAfterFirstTraining");
+    const afterFirst = parsePeriodForm({ ...validPeriodInput, preferenceDeadline: "2027-01-05T09:00" });
+    expect(afterFirst.errors).toContain("deadlineAfterFirstTraining");
+  });
+
+  it("allows a deadline just before the first training", () => {
+    const result = parsePeriodForm({ ...validPeriodInput, preferenceDeadline: "2027-01-04T17:59" });
+    expect(result.errors).toEqual([]);
   });
 
   it("requires at least one non-blank slot", () => {
@@ -197,23 +221,19 @@ describe("parsePeriodForm", () => {
   });
 
   it.each([
-    [{ weekday: "FUNDAY" }, "slotWeekdayInvalid"],
-    [{ startTime: "25:00" }, "slotTimesInvalid"],
-    [{ startTime: "19:00", endTime: "18:00" }, "slotTimesOutOfOrder"],
-    [{ capacity: "0" }, "slotCapacityInvalid"],
-    [{ capacity: "2.5" }, "slotCapacityInvalid"],
-  ] as const)("rejects a slot with %o as %s", (override, expectedError) => {
-    const result = parsePeriodForm({ ...validPeriodInput, slots: [slot(override)] });
-    expect(result.data).toBeNull();
-    expect(result.errors).toContain(expectedError);
-  });
-
-  it("allows a deadline on the period's last day", () => {
+    [{ weekday: "FUNDAY" }, "60", "slotWeekdayInvalid"],
+    [{ startTime: "25:00" }, "60", "slotTimesInvalid"],
+    [{ startTime: "23:30" }, "60", "slotEndsPastMidnight"],
+    [{ capacity: "0" }, "60", "slotCapacityInvalid"],
+    [{ capacity: "2.5" }, "60", "slotCapacityInvalid"],
+  ] as const)("rejects a slot with %o as %s", (override, durationMinutes, expectedError) => {
     const result = parsePeriodForm({
       ...validPeriodInput,
-      preferenceDeadline: "2027-03-29T12:00",
+      durationMinutes,
+      slots: [slot(override)],
     });
-    expect(result.errors).toEqual([]);
+    expect(result.data).toBeNull();
+    expect(result.errors).toContain(expectedError);
   });
 
   it("collects multiple errors at once", () => {
