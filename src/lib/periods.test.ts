@@ -259,47 +259,46 @@ describe("parsePeriodForm", () => {
 });
 
 describe("parsePreferenceForm", () => {
-  const periodWeekdays = ["MONDAY", "TUESDAY"] as const;
+  const base = { slotIds: ["slot_1"], skillLevel: "5", notes: "", partnerIds: [] as string[] };
 
-  it("accepts weekdays offered by the period", () => {
-    const result = parsePreferenceForm(
-      { weekdays: ["TUESDAY", "MONDAY"], skillLevel: "5", notes: "  after 19:00 please  " },
-      periodWeekdays,
-    );
+  it("accepts chosen blocks, skill, notes and partners", () => {
+    const result = parsePreferenceForm({
+      slotIds: ["slot_1", "slot_1", "slot_2"],
+      skillLevel: "5",
+      notes: "  after 19:00 please  ",
+      partnerIds: ["u1", "u1", "u2"],
+    });
     expect(result.errors).toEqual([]);
+    // Ids de-duplicated, notes trimmed.
     expect(result.data).toEqual({
-      preferredWeekdays: ["MONDAY", "TUESDAY"],
+      slotIds: ["slot_1", "slot_2"],
       skillLevel: 5,
       notes: "after 19:00 please",
+      partnerIds: ["u1", "u2"],
     });
   });
 
   it("stores empty notes as null", () => {
-    const result = parsePreferenceForm(
-      { weekdays: ["MONDAY"], skillLevel: "1", notes: "   " },
-      periodWeekdays,
-    );
-    expect(result.data?.notes).toBeNull();
+    expect(parsePreferenceForm({ ...base, notes: "   " }).data?.notes).toBeNull();
   });
 
-  it("rejects weekdays the period doesn't train on", () => {
-    const result = parsePreferenceForm(
-      { weekdays: ["FRIDAY"], skillLevel: "5", notes: "" },
-      periodWeekdays,
-    );
-    expect(result.errors).toContain("weekdaysNotOffered");
+  it("requires at least one block", () => {
+    const result = parsePreferenceForm({ ...base, slotIds: [] });
+    expect(result.errors).toContain("slotsRequired");
   });
 
-  it("requires at least one weekday", () => {
-    const result = parsePreferenceForm({ weekdays: [], skillLevel: "5", notes: "" }, periodWeekdays);
-    expect(result.errors).toContain("weekdaysRequired");
+  it("rejects more than the max number of partners", () => {
+    const result = parsePreferenceForm({ ...base, partnerIds: ["a", "b", "c", "d"] });
+    expect(result.errors).toContain("tooManyPartners");
+  });
+
+  it("allows up to the max number of partners", () => {
+    const result = parsePreferenceForm({ ...base, partnerIds: ["a", "b", "c"] });
+    expect(result.errors).toEqual([]);
   });
 
   it.each(["0", "10", "4.5", "", "great"])("rejects skill level %s", (skillLevel) => {
-    const result = parsePreferenceForm(
-      { weekdays: ["MONDAY"], skillLevel, notes: "" },
-      periodWeekdays,
-    );
+    const result = parsePreferenceForm({ ...base, skillLevel });
     expect(result.errors).toContain("skillLevelInvalid");
   });
 });

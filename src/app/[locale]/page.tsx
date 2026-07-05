@@ -1,6 +1,7 @@
 import { getFormatter, getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { isPlayer } from "@/lib/rbac";
 import { Link } from "@/i18n/navigation";
 
 export default async function HomePage() {
@@ -27,12 +28,21 @@ export default async function HomePage() {
     getFormatter(),
   ]);
   const userId = session.user.id;
+  const now = new Date();
 
-  const [upcomingAssignments, pendingPayments] = await Promise.all([
+  const [openPeriods, upcomingAssignments, pendingPayments] = await Promise.all([
+    // Periods a player can still sign up for (open and before the deadline).
+    isPlayer(session)
+      ? db.trainingPeriod.findMany({
+          where: { status: "OPEN", preferenceDeadline: { gt: now } },
+          orderBy: { preferenceDeadline: "asc" },
+          include: { preferences: { where: { userId }, select: { id: true } } },
+        })
+      : Promise.resolve([]),
     db.assignment.findMany({
       where: {
         userId,
-        slot: { trainingSession: { status: "SCHEDULED", date: { gte: new Date() } } },
+        slot: { trainingSession: { status: "SCHEDULED", date: { gte: now } } },
       },
       include: { slot: { include: { trainingSession: true } } },
       orderBy: { slot: { trainingSession: { date: "asc" } } },
@@ -47,6 +57,40 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col gap-8 py-4">
       <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
+
+      {openPeriods.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground/60">
+            {t("openForEnrolmentTitle")}
+          </h2>
+          <ul className="divide-y divide-line rounded-lg border border-line">
+            {openPeriods.map((period) => (
+              <li key={period.id}>
+                <Link
+                  href={`/periods/${period.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-court/5"
+                >
+                  <span className="font-medium">{period.name}</span>
+                  <span className="flex items-center gap-3 text-sm text-foreground/60">
+                    {t("enrolDeadline", {
+                      date: format.dateTime(period.preferenceDeadline, { dateStyle: "medium" }),
+                    })}
+                    <span
+                      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                        period.preferences.length > 0
+                          ? "border-court bg-court text-white"
+                          : "border-court/40 bg-court/10 text-court dark:text-ball"
+                      }`}
+                    >
+                      {period.preferences.length > 0 ? t("enrolledBadge") : t("enrolBadge")}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground/60">

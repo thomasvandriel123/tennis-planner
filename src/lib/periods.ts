@@ -327,49 +327,60 @@ export function parsePeriodForm(
   };
 }
 
-// --- Preference form --------------------------------------------------------
+// --- Preference (enrolment) form --------------------------------------------
 
-/** Raw string values from a player's preference form. */
+/** Max training partners a player may list (SPECS.md §4.2 "up to N"). */
+export const MAX_PREFERRED_PARTNERS = 3;
+
+/** Raw string values from a player's enrolment form. */
 export interface PreferenceFormInput {
-  weekdays: string[];
+  /** Ids of the recurring blocks the player wants to join. */
+  slotIds: string[];
   skillLevel: string;
   notes: string;
+  /** Ids of members the player would like as training partners. */
+  partnerIds: string[];
 }
 
 export interface ParsedPreferenceForm {
-  preferredWeekdays: Weekday[];
+  slotIds: string[];
   skillLevel: number;
   notes: string | null;
+  partnerIds: string[];
 }
 
 /** Error identifiers double as i18n keys under `periods.preferenceForm.errors`. */
-export type PreferenceFormError = "weekdaysRequired" | "weekdaysNotOffered" | "skillLevelInvalid";
+export type PreferenceFormError = "slotsRequired" | "skillLevelInvalid" | "tooManyPartners";
 
+/**
+ * Shape-level validation of the enrolment form. Whether the chosen block ids
+ * belong to the period, and whether the partner ids are real members, is
+ * checked against the database in the server action (they need a query).
+ */
 export function parsePreferenceForm(
   input: PreferenceFormInput,
-  periodWeekdays: readonly Weekday[],
 ): { data: ParsedPreferenceForm; errors: [] } | { data: null; errors: PreferenceFormError[] } {
   const errors: PreferenceFormError[] = [];
 
-  const weekdays = input.weekdays.filter(isWeekday);
-  if (weekdays.length === 0 || weekdays.length !== input.weekdays.length) {
-    errors.push("weekdaysRequired");
-  } else if (weekdays.some((d) => !periodWeekdays.includes(d))) {
-    errors.push("weekdaysNotOffered");
-  }
+  const slotIds = [...new Set(input.slotIds.filter((id) => id.trim()))];
+  if (slotIds.length === 0) errors.push("slotsRequired");
 
   const skillLevel = Number(input.skillLevel);
   if (!Number.isInteger(skillLevel) || skillLevel < 1 || skillLevel > 9) {
     errors.push("skillLevelInvalid");
   }
 
+  const partnerIds = [...new Set(input.partnerIds.filter((id) => id.trim()))];
+  if (partnerIds.length > MAX_PREFERRED_PARTNERS) errors.push("tooManyPartners");
+
   if (errors.length > 0) return { data: null, errors };
   const notes = input.notes.trim();
   return {
     data: {
-      preferredWeekdays: sortWeekdays(weekdays),
+      slotIds,
       skillLevel,
       notes: notes ? notes.slice(0, 2000) : null,
+      partnerIds,
     },
     errors: [],
   };

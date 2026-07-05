@@ -43,23 +43,63 @@ export default async function PeriodDetailPage({
   const preview = organiser && previewParam === "1";
   const showOrganiserView = organiser && !preview;
 
-  const [t, tWeekdays, format, preferences, ownPreference] = await Promise.all([
+  // The enrolment form (and its preview) needs the club's players as possible
+  // training partners - everyone with the PLAYER role except the viewer.
+  const needMembers = preview || (player && period.status !== "PUBLISHED");
+
+  const [t, tWeekdays, format, preferences, ownPreference, memberRows] = await Promise.all([
     getTranslations("periods.detail"),
     getTranslations("periods.weekdays"),
     getFormatter(),
     showOrganiserView
       ? db.preference.findMany({
           where: { periodId: period.id },
-          include: { user: { select: { name: true, email: true } } },
+          include: {
+            user: { select: { name: true, email: true } },
+            preferredSlots: { select: { id: true } },
+            preferredPartners: { select: { name: true, email: true } },
+          },
           orderBy: { submittedAt: "asc" },
         })
       : Promise.resolve([]),
     player && !preview
       ? db.preference.findUnique({
           where: { userId_periodId: { userId: session!.user.id, periodId: period.id } },
+          include: {
+            preferredSlots: { select: { id: true } },
+            preferredPartners: { select: { id: true, name: true, email: true } },
+          },
         })
       : Promise.resolve(null),
+    needMembers
+      ? db.userRole.findMany({
+          where: { role: "PLAYER", userId: { not: session!.user.id } },
+          include: { user: { select: { id: true, name: true, email: true } } },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // A member can hold the PLAYER role more than once (globally + per period);
+  // list each person just once.
+  const members = [
+    ...new Map(memberRows.map(({ user }) => [user.id, user])).values(),
+  ].map((u) => ({ id: u.id, label: u.name ?? u.email }));
+  const blocks = period.recurringSlots.map((s) => ({
+    id: s.id,
+    weekday: s.weekday,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    capacity: s.capacity,
+    label: s.label,
+  }));
+  const blockById = new Map(blocks.map((b) => [b.id, b]));
+  const formatBlocks = (ids: { id: string }[]) =>
+    ids
+      .map(({ id }) => blockById.get(id))
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .sort((a, b) => WEEKDAYS.indexOf(a.weekday) - WEEKDAYS.indexOf(b.weekday) || a.startTime.localeCompare(b.startTime))
+      .map((b) => `${tWeekdays(b.weekday)} ${b.startTime}–${b.endTime}`)
+      .join(", ");
 
   const now = new Date();
   const published = period.status === "PUBLISHED";
@@ -218,48 +258,58 @@ export default async function PeriodDetailPage({
         </p>
       )}
 
-      {/* Preference form: interactive for a player during the window, or a
+      {/* Enrolment form: interactive for a player during the window, or a
           disabled preview for the organiser. */}
       {preview ? (
         <section className="flex flex-col gap-3 rounded-lg border border-line p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground/60">
-            {t("preferencesTitle")}
+            {t("enrolTitle")}
           </h2>
-          <PreferenceForm
-            periodId={period.id}
-            periodWeekdays={offeredWeekdays}
-            existing={null}
-            preview
-          />
+          <PreferenceForm periodId={period.id} blocks={blocks} members={members} existing={null} preview />
         </section>
       ) : (
         player &&
         !published && (
           <section className="flex flex-col gap-3 rounded-lg border border-line p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground/60">
-              {t("preferencesTitle")}
+              {ownPreference ? t("enrolledTitle") : t("enrolTitle")}
             </h2>
             {preferenceWindowOpen ? (
-              <PreferenceForm
-                periodId={period.id}
-                periodWeekdays={offeredWeekdays}
-                existing={
-                  ownPreference && {
-                    preferredWeekdays: ownPreference.preferredWeekdays,
-                    skillLevel: ownPreference.skillLevel,
-                    notes: ownPreference.notes,
+              <>
+                <p className="text-sm text-foreground/60">{t("enrolIntro")}</p>
+                <PreferenceForm
+                  periodId={period.id}
+                  blocks={blocks}
+                  members={members}
+                  existing={
+                    ownPreference && {
+                      slotIds: ownPreference.preferredSlots.map((s) => s.id),
+                      skillLevel: ownPreference.skillLevel,
+                      notes: ownPreference.notes,
+                      partnerIds: ownPreference.preferredPartners.map((p) => p.id),
+                    }
                   }
-                }
-              />
+                />
+              </>
             ) : ownPreference ? (
-              <div className="flex flex-col gap-1 text-sm">
+              <div className="flex flex-col gap-2 text-sm">
                 <p className="text-foreground/60">{t("preferencesClosed")}</p>
-                <p>
-                  {t("yourPreference", {
-                    weekdays: ownPreference.preferredWeekdays.map((d) => tWeekdays(d)).join(", "),
-                    skillLevel: ownPreference.skillLevel,
-                  })}
-                </p>
+                <dl className="flex flex-col gap-1">
+                  <div className="flex gap-2">
+                    <dt className="text-foreground/60">{t("summaryBlocks")}</dt>
+                    <dd>{formatBlocks(ownPreference.preferredSlots) || "—"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-foreground/60">{t("summarySkill")}</dt>
+                    <dd>{ownPreference.skillLevel}</dd>
+                  </div>
+                  {ownPreference.preferredPartners.length > 0 && (
+                    <div className="flex gap-2">
+                      <dt className="text-foreground/60">{t("summaryPartners")}</dt>
+                      <dd>{ownPreference.preferredPartners.map((p) => p.name ?? p.email).join(", ")}</dd>
+                    </div>
+                  )}
+                </dl>
                 {ownPreference.notes && <p className="text-foreground/60">{ownPreference.notes}</p>}
               </div>
             ) : (
@@ -278,12 +328,13 @@ export default async function PeriodDetailPage({
             <p className="text-foreground/60">{t("noPreferencesYet")}</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-line">
-              <table className="w-full min-w-[36rem] text-left text-sm">
+              <table className="w-full min-w-[44rem] text-left text-sm">
                 <thead className="border-b border-line text-xs uppercase tracking-wide text-foreground/60">
                   <tr>
                     <th className="px-4 py-2 font-semibold">{t("tablePlayer")}</th>
                     <th className="px-4 py-2 font-semibold">{t("tableSkill")}</th>
-                    <th className="px-4 py-2 font-semibold">{t("tableWeekdays")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("tableBlocks")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("tablePartners")}</th>
                     <th className="px-4 py-2 font-semibold">{t("tableNotes")}</th>
                   </tr>
                 </thead>
@@ -292,8 +343,9 @@ export default async function PeriodDetailPage({
                     <tr key={preference.id}>
                       <td className="px-4 py-2">{preference.user.name ?? preference.user.email}</td>
                       <td className="px-4 py-2">{preference.skillLevel}</td>
-                      <td className="px-4 py-2">
-                        {preference.preferredWeekdays.map((d) => tWeekdays(d)).join(", ")}
+                      <td className="px-4 py-2">{formatBlocks(preference.preferredSlots) || "—"}</td>
+                      <td className="px-4 py-2 text-foreground/60">
+                        {preference.preferredPartners.map((p) => p.name ?? p.email).join(", ") || "—"}
                       </td>
                       <td className="px-4 py-2 text-foreground/60">{preference.notes}</td>
                     </tr>
