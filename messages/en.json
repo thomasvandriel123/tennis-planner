@@ -7,7 +7,6 @@
     "dashboard": "Dashboard",
     "trainingPeriods": "Training periods",
     "members": "Members",
-    "payments": "Payments",
     "signIn": "Sign in",
     "signOut": "Sign out"
   },
@@ -32,6 +31,23 @@
     "upcomingSessionsEmpty": "No trainings scheduled yet.",
     "paymentStatusTitle": "Payment status",
     "paymentStatusEmpty": "No outstanding payments."
+  },
+  "members": {
+    "title": "Members",
+    "periodLabel": "Period",
+    "noPeriods": "No training periods yet.",
+    "empty": "No players yet.",
+    "yes": "Yes",
+    "no": "No",
+    "col": {
+      "lastName": "Last name",
+      "firstName": "First name",
+      "email": "Email",
+      "skillLevel": "Skill",
+      "enrolled": "Signed up",
+      "notes": "Notes",
+      "paid": "Paid"
+    }
   },
   "periods": {
     "title": "Training periods",

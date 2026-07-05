@@ -9,18 +9,11 @@ import { NavLinks } from "./nav-links";
 export async function SiteNav() {
   const [t, session] = await Promise.all([getTranslations(), auth()]);
 
-  // Members/payments pages don't exist yet (SPECS.md §6) - the organiser sees
-  // a dead link until they're built. Tracked as a known gap, not fixed here.
   const links = session
     ? [
         { href: "/", label: t("nav.dashboard") },
         { href: "/periods", label: t("nav.trainingPeriods") },
-        ...(isOrganiser(session)
-          ? [
-              { href: "/members", label: t("nav.members") },
-              { href: "/payments", label: t("nav.payments") },
-            ]
-          : []),
+        ...(isOrganiser(session) ? [{ href: "/members", label: t("nav.members") }] : []),
       ]
     : [];
 

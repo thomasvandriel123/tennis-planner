@@ -7,7 +7,6 @@
     "dashboard": "Overzicht",
     "trainingPeriods": "Trainingsperiodes",
     "members": "Leden",
-    "payments": "Betalingen",
     "signIn": "Inloggen",
     "signOut": "Uitloggen"
   },
@@ -32,6 +31,23 @@
     "upcomingSessionsEmpty": "Nog geen trainingen gepland.",
     "paymentStatusTitle": "Betaalstatus",
     "paymentStatusEmpty": "Geen openstaande betalingen."
+  },
+  "members": {
+    "title": "Leden",
+    "periodLabel": "Periode",
+    "noPeriods": "Nog geen trainingsperiodes.",
+    "empty": "Nog geen spelers.",
+    "yes": "Ja",
+    "no": "Nee",
+    "col": {
+      "lastName": "Achternaam",
+      "firstName": "Voornaam",
+      "email": "E-mail",
+      "skillLevel": "Speelsterkte",
+      "enrolled": "Voorkeuren",
+      "notes": "Opmerkingen",
+      "paid": "Betaald"
+    }
   },
   "periods": {
     "title": "Trainingsperiodes",

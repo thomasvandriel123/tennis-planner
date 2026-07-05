@@ -56,6 +56,8 @@ A club member. Holds one or more Roles (see UserRole) and, if they play, a self-
 |---|---|---|
 | id | `String` | — |
 | name | `String?` | Unset for a member who has only ever signed in via magic link and never been given a name - Auth.js creates the User row from just the email address on first sign-in. |
+| firstName | `String?` | Structured name, set by the organiser when inviting a member. Used for the members roster (sortable by last name). `name` remains the display fallback for magic-link users who have neither. |
+| lastName | `String?` | — |
 | email | `String` | — |
 | emailVerified | `DateTime?` | — |
 | image | `String?` | — |
