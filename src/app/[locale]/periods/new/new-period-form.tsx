@@ -79,14 +79,6 @@ export function NewPeriodForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-5">
-      {state.errors.length > 0 && (
-        <ul className="rounded-md border border-clay/40 bg-clay/10 px-4 py-3 text-sm text-clay">
-          {state.errors.map((error) => (
-            <li key={error}>{t(`errors.${error}`)}</li>
-          ))}
-        </ul>
-      )}
-
       <label className={labelClass}>
         {t("nameLabel")}
         <input
@@ -188,7 +180,7 @@ export function NewPeriodForm({
                     aria-label={t("slotCapacity")}
                     name="slotCapacity"
                     min={1}
-                    required
+                    placeholder={t("slotCapacityPlaceholder")}
                     value={row.capacity}
                     onChange={(e) => updateSlot(i, { capacity: e.target.value })}
                     className={inputClass}
@@ -275,6 +267,14 @@ export function NewPeriodForm({
         />
         <span className="font-normal text-foreground/60">{t("priceHelp")}</span>
       </label>
+
+      {state.errors.length > 0 && (
+        <ul className="rounded-md border border-clay/40 bg-clay/10 px-4 py-3 text-sm text-clay">
+          {state.errors.map((error) => (
+            <li key={error}>{t(`errors.${error}`)}</li>
+          ))}
+        </ul>
+      )}
 
       <button
         type="submit"

@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { isOrganiser } from "@/lib/rbac";
 import { Link, redirect } from "@/i18n/navigation";
 import { PeriodStatusBadge } from "./period-status-badge";
+import { ConfirmSubmitButton } from "./[id]/confirm-submit-button";
+import { deletePeriod } from "./actions";
 
 export default async function PeriodsPage({
   params,
@@ -45,10 +47,10 @@ export default async function PeriodsPage({
       ) : (
         <ul className="divide-y divide-line rounded-lg border border-line">
           {periods.map((period) => (
-            <li key={period.id}>
+            <li key={period.id} className="flex items-center gap-2 hover:bg-court/5">
               <Link
                 href={`/periods/${period.id}`}
-                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-court/5"
+                className="flex flex-1 flex-wrap items-center justify-between gap-2 px-4 py-3"
               >
                 <span className="font-medium">{period.name}</span>
                 <span className="flex items-center gap-3 text-sm text-foreground/60">
@@ -59,6 +61,19 @@ export default async function PeriodsPage({
                   <PeriodStatusBadge status={period.status} />
                 </span>
               </Link>
+              {organiser && (
+                <form action={deletePeriod} className="pr-3">
+                  <input type="hidden" name="periodId" value={period.id} />
+                  <ConfirmSubmitButton
+                    variant="danger"
+                    label={t("delete.button")}
+                    title={t("delete.title")}
+                    body={t("delete.body", { name: period.name })}
+                    confirmLabel={t("delete.confirm")}
+                    cancelLabel={t("delete.cancel")}
+                  />
+                </form>
+              )}
             </li>
           ))}
         </ul>

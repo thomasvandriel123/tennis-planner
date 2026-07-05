@@ -170,6 +170,15 @@ describe("parsePeriodForm", () => {
     expect(result.data?.slots[2]).toMatchObject({ label: null, trainerId: null });
   });
 
+  it("treats group size as optional", () => {
+    const result = parsePeriodForm({
+      ...validPeriodInput,
+      slots: [slot({ capacity: "" }), slot({ startTime: "19:00", capacity: "  " })],
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.data?.slots.map((s) => s.capacity)).toEqual([null, null]);
+  });
+
   it("derives end time from a non-hour duration", () => {
     const result = parsePeriodForm({
       ...validPeriodInput,

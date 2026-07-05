@@ -5,19 +5,34 @@ import { useFormStatus } from "react-dom";
 
 // A submit button that first asks for confirmation in a small modal. Rendered
 // inside a server-action <form>, so confirming just submits that form. Used
-// for irreversible steps like opening a period for preferences.
+// for irreversible steps like opening a period, or deleting one (danger).
+
+type Variant = "primary" | "danger";
+
+const TRIGGER_CLASS: Record<Variant, string> = {
+  primary: "rounded-md bg-court px-4 py-2 text-sm font-medium text-white hover:bg-court-dark",
+  danger:
+    "rounded-md border border-line px-3 py-1.5 text-sm font-medium text-clay hover:bg-clay/5",
+};
+
+const CONFIRM_CLASS: Record<Variant, string> = {
+  primary: "rounded-md bg-court px-4 py-2 text-sm font-medium text-white hover:bg-court-dark disabled:opacity-50",
+  danger: "rounded-md bg-clay px-4 py-2 text-sm font-medium text-white hover:bg-clay/90 disabled:opacity-50",
+};
 
 function ConfirmDialog({
   title,
   body,
   confirmLabel,
   cancelLabel,
+  variant,
   onCancel,
 }: {
   title: string;
   body: string;
   confirmLabel: string;
   cancelLabel: string;
+  variant: Variant;
   onCancel: () => void;
 }) {
   const { pending } = useFormStatus();
@@ -40,11 +55,7 @@ function ConfirmDialog({
           >
             {cancelLabel}
           </button>
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-court px-4 py-2 text-sm font-medium text-white hover:bg-court-dark disabled:opacity-50"
-          >
+          <button type="submit" disabled={pending} className={CONFIRM_CLASS[variant]}>
             {confirmLabel}
           </button>
         </div>
@@ -59,21 +70,19 @@ export function ConfirmSubmitButton({
   body,
   confirmLabel,
   cancelLabel,
+  variant = "primary",
 }: {
   label: string;
   title: string;
   body: string;
   confirmLabel: string;
   cancelLabel: string;
+  variant?: Variant;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-md bg-court px-4 py-2 text-sm font-medium text-white hover:bg-court-dark"
-      >
+      <button type="button" onClick={() => setOpen(true)} className={TRIGGER_CLASS[variant]}>
         {label}
       </button>
       {open && (
@@ -82,6 +91,7 @@ export function ConfirmSubmitButton({
           body={body}
           confirmLabel={confirmLabel}
           cancelLabel={cancelLabel}
+          variant={variant}
           onCancel={() => setOpen(false)}
         />
       )}

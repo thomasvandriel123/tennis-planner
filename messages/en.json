@@ -33,6 +33,13 @@
     "title": "Training periods",
     "empty": "No training periods yet.",
     "newButton": "New training period",
+    "delete": {
+      "button": "Delete",
+      "title": "Delete this period?",
+      "body": "\"{name}\" and everything tied to it — all generated trainings, submitted preferences and payment records — will be permanently deleted. This can't be undone.",
+      "confirm": "Delete period",
+      "cancel": "Cancel"
+    },
     "status": {
       "DRAFT": "Draft",
       "OPEN": "Open for preferences",
@@ -60,11 +67,12 @@
       "durationOption": "{minutes} min",
       "durationHelp": "How long one training lasts. Each block's end time follows from its start plus this.",
       "slotsLabel": "Weekly schedule",
-      "slotsHelp": "Add each training block: which day, its start time, the group size, and a trainer. Days can run at different times, and two blocks may share a time (parallel trainings on different courts).",
+      "slotsHelp": "Add each training block: pick the day and start time. Group size, trainer and label are optional and can be filled in later. Days can run at different times, and two blocks may share a time (parallel trainings on different courts).",
       "slotDay": "Day",
       "slotStart": "Start",
       "slotEndHint": "→ {end}",
       "slotCapacity": "Group size",
+      "slotCapacityPlaceholder": "Optional",
       "slotTrainer": "Trainer",
       "slotTrainerNone": "No trainer yet",
       "slotLabelField": "Label",
